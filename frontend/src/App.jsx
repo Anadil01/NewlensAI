@@ -1,18 +1,44 @@
-import './App.css'
+import {
+  BrowserRouter,
+  Routes,
+  Route
+} from "react-router-dom";
+
+import Navbar from "./components/Navbar";
+
+import Home from "./pages/Home";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Bookmarks from "./pages/Bookmarks";
 
 function App() {
   return (
-    <main className="app-shell">
-      <section className="hero">
-        <p className="eyebrow">Frontend Ready</p>
-        <h1>HN Insight Hub</h1>
-        <p className="lead">
-          The Vite starter content has been removed so this frontend is clean and
-          ready for your real dashboard UI.
-        </p>
-      </section>
-    </main>
-  )
+    <BrowserRouter>
+      <Navbar />
+
+      <Routes>
+        <Route
+          path="/"
+          element={<Home />}
+        />
+
+        <Route
+          path="/login"
+          element={<Login />}
+        />
+
+        <Route
+          path="/register"
+          element={<Register />}
+        />
+
+        <Route
+          path="/bookmarks"
+          element={<Bookmarks />}
+        />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;

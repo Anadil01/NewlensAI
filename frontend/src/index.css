@@ -1,38 +1,63 @@
-:root {
-  font-family: "Sora", "Segoe UI", sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #0f172a;
-  background:
-    radial-gradient(circle at top, rgba(45, 212, 191, 0.18), transparent 35%),
-    linear-gradient(180deg, #f8fafc 0%, #eef6ff 100%);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  margin: 0;
-  min-height: 100%;
-}
-
 body {
-  min-width: 320px;
-}
-
-h1 {
-  font-size: clamp(2.5rem, 6vw, 4.5rem);
-  line-height: 0.95;
-  letter-spacing: -0.05em;
-}
-
-p {
   margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f4f4f4;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px;
+  background: #111827;
+  color: white;
+}
+
+.navbar div {
+  display: flex;
+  gap: 15px;
+}
+
+.container {
+  padding: 20px;
+}
+
+.stories-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.story-card {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+}
+
+.story-card button {
+  margin-top: 10px;
+}
+
+.form-container {
+  max-width: 400px;
+  margin: 40px auto;
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+}
+
+.form-container form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+input,
+button {
+  padding: 10px;
 }
