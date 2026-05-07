@@ -29,6 +29,7 @@ const scrapeStories = async () => {
     console.log("Stories scraped successfully");
   } catch (error) {
     console.log("Scraper Error:", error.message);
+    throw error;
   }
 };
 
