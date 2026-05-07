@@ -5,10 +5,12 @@ import { Link, useNavigate } from "react-router-dom";
 
 import API from "../api/axios";
 import { useAuth } from "../context/useAuth";
+import { useToast } from "../context/useToast";
 
 const Login = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const toast = useToast();
 
   const [formData, setFormData] = useState({
     email: "",
@@ -38,9 +40,17 @@ const Login = () => {
       );
 
       login(data);
+      toast.success(`Welcome back, ${data.name}!`);
       navigate("/");
-    } catch {
-      setErrorMessage("Invalid credentials. Please try again.");
+    } catch (error) {
+      const message = error.response?.data?.message
+        || (error.request
+          ? "Cannot reach the backend server. Make sure the backend is running on port 5000."
+          : "Login failed. Please try again.");
+
+      setErrorMessage(
+        message
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -52,20 +62,20 @@ const Login = () => {
         <p className="text-sm font-bold uppercase tracking-[0.24em] text-signal-deep">
           Welcome back
         </p>
-        <h1 className="text-5xl font-black tracking-tight text-slate-950 sm:text-6xl">
+        <h1 className="text-5xl font-black tracking-tight text-slate-950 sm:text-6xl dark:text-white">
           Pick up your story flow where you left it.
         </h1>
-        <p className="max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
+        <p className="max-w-xl text-base leading-7 text-slate-600 sm:text-lg dark:text-slate-300">
           Sign in to save high-signal posts, track what matters, and keep your
           reading queue organized.
         </p>
       </div>
 
-      <div className="rounded-[32px] border border-stroke bg-white/85 p-8 shadow-[0_30px_100px_rgba(15,23,42,0.08)] backdrop-blur sm:p-10">
-        <h2 className="text-3xl font-extrabold tracking-tight text-slate-950">
+      <div className="rounded-[32px] border border-stroke bg-white/85 p-8 shadow-[0_30px_100px_rgba(15,23,42,0.08)] backdrop-blur sm:p-10 dark:border-white/10 dark:bg-slate-900/80">
+        <h2 className="text-3xl font-extrabold tracking-tight text-slate-950 dark:text-white">
           Login
         </h2>
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
           Access your bookmarks and saved reading list.
         </p>
 
@@ -79,7 +89,7 @@ const Login = () => {
             value={formData.email}
             placeholder="Email"
             onChange={handleChange}
-            className="w-full rounded-2xl border border-stroke bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-amber-400 focus:bg-white"
+            className="w-full rounded-2xl border border-stroke bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-amber-400 focus:bg-white dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
           />
 
           <input
@@ -88,7 +98,7 @@ const Login = () => {
             value={formData.password}
             placeholder="Password"
             onChange={handleChange}
-            className="w-full rounded-2xl border border-stroke bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-amber-400 focus:bg-white"
+            className="w-full rounded-2xl border border-stroke bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-amber-400 focus:bg-white dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
           />
 
           {errorMessage && (
@@ -106,7 +116,7 @@ const Login = () => {
           </button>
         </form>
 
-        <p className="mt-5 text-sm text-slate-600">
+        <p className="mt-5 text-sm text-slate-600 dark:text-slate-300">
           New here?{" "}
           <Link
             to="/register"

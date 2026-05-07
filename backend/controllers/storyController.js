@@ -5,10 +5,38 @@ const mongoose = require("mongoose");
 
 exports.getStories = async (req, res) => {
   try {
-    const stories = await Story.find()
-      .sort({ points: -1 });
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 6, 1),
+      24
+    );
+    const search = req.query.search?.trim() || "";
+    const query = search
+      ? {
+          $or: [
+            { title: { $regex: search, $options: "i" } },
+            { author: { $regex: search, $options: "i" } }
+          ]
+        }
+      : {};
 
-    res.json(stories);
+    const total = await Story.countDocuments(query);
+    const stories = await Story.find(query)
+      .sort({ points: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    res.json({
+      stories,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.max(Math.ceil(total / limit), 1),
+        hasNextPage: page * limit < total,
+        hasPreviousPage: page > 1
+      }
+    });
   } catch (error) {
     res.status(500).json({
       message: error.message

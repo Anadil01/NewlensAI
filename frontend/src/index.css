@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-sans: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
@@ -22,6 +23,16 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+  color: #e5e7eb;
+  background:
+    radial-gradient(circle at top left, rgba(217, 119, 6, 0.18), transparent 30%),
+    radial-gradient(circle at top right, rgba(13, 148, 136, 0.16), transparent 28%),
+    linear-gradient(180deg, #020617 0%, #0f172a 100%);
 }
 
 html,
@@ -32,6 +43,9 @@ body,
 
 body {
   margin: 0;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
 }
 
 a {
