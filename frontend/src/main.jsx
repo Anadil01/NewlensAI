@@ -7,7 +7,7 @@ import "./index.css";
 
 import {
   AuthProvider
-} from "./context/AuthContext";
+} from "./context/AuthContext.jsx";
 
 ReactDOM.createRoot(
   document.getElementById("root")

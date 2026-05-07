@@ -1,63 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+  --color-shell: #f6f4ed;
+  --color-ink: #0f172a;
+  --color-muted: #5b6575;
+  --color-card: rgba(255, 255, 255, 0.8);
+  --color-stroke: rgba(15, 23, 42, 0.09);
+  --color-signal: #d97706;
+  --color-signal-deep: #9a3412;
+  --color-mint: #0f766e;
+}
+
+:root {
+  color: var(--color-ink);
+  background:
+    radial-gradient(circle at top left, rgba(245, 158, 11, 0.2), transparent 30%),
+    radial-gradient(circle at top right, rgba(15, 118, 110, 0.16), transparent 28%),
+    linear-gradient(180deg, #fbfaf6 0%, #f4f4ef 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
   margin: 0;
-  font-family: Arial, sans-serif;
-  background: #f4f4f4;
 }
 
 a {
-  text-decoration: none;
   color: inherit;
 }
 
-.navbar {
-  display: flex;
-  justify-content: space-between;
-  padding: 20px;
-  background: #111827;
-  color: white;
+button,
+input {
+  font: inherit;
 }
 
-.navbar div {
-  display: flex;
-  gap: 15px;
-}
-
-.container {
-  padding: 20px;
-}
-
-.stories-grid {
-  display: grid;
-  grid-template-columns:
-    repeat(auto-fit, minmax(300px, 1fr));
-  gap: 20px;
-}
-
-.story-card {
-  background: white;
-  padding: 20px;
-  border-radius: 10px;
-}
-
-.story-card button {
-  margin-top: 10px;
-}
-
-.form-container {
-  max-width: 400px;
-  margin: 40px auto;
-  background: white;
-  padding: 20px;
-  border-radius: 10px;
-}
-
-.form-container form {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-input,
-button {
-  padding: 10px;
+::selection {
+  background: rgba(217, 119, 6, 0.18);
 }

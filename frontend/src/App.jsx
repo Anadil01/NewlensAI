@@ -14,29 +14,33 @@ import Bookmarks from "./pages/Bookmarks";
 function App() {
   return (
     <BrowserRouter>
-      <Navbar />
+      <div className="min-h-screen text-ink">
+        <Navbar />
 
-      <Routes>
-        <Route
-          path="/"
-          element={<Home />}
-        />
+        <main className="mx-auto w-full max-w-7xl px-4 pb-14 pt-6 sm:px-6 lg:px-8">
+          <Routes>
+            <Route
+              path="/"
+              element={<Home />}
+            />
 
-        <Route
-          path="/login"
-          element={<Login />}
-        />
+            <Route
+              path="/login"
+              element={<Login />}
+            />
 
-        <Route
-          path="/register"
-          element={<Register />}
-        />
+            <Route
+              path="/register"
+              element={<Register />}
+            />
 
-        <Route
-          path="/bookmarks"
-          element={<Bookmarks />}
-        />
-      </Routes>
+            <Route
+              path="/bookmarks"
+              element={<Bookmarks />}
+            />
+          </Routes>
+        </main>
+      </div>
     </BrowserRouter>
   );
 }
