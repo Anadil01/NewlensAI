@@ -9,3 +9,6 @@ backend/utils/asyncHandler.js
 Purpose:
 Catch rejected promises from async controllers
 and pass errors to Express using next(error).
+
+
+# Never trust data coming from the client. -- A client can send anything.

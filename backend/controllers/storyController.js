@@ -1,7 +1,6 @@
 const Story = require("../models/Story");
 const User = require("../models/User");
 const scrapeStories = require("../services/scraperService");
-const mongoose = require("mongoose");
 
 const asyncHandler = require("../utils/asyncHandler");
 const AppError = require("../utils/AppError");
@@ -67,10 +66,6 @@ exports.getStories = asyncHandler(async (req, res) => {
 exports.getSingleStory = asyncHandler( async (req, res) => {
   const { id } = req.params;
   
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      throw new AppError("Invalid story ID", 400);
-    }
-
     const story = await Story.findById(id);
 
     if (!story) {
@@ -96,10 +91,6 @@ exports.toggleBookmark = asyncHandler(async (req, res) => {
 
   if (!user) {
     throw new AppError("User not found", 404);
-  }
-
-  if (!mongoose.Types.ObjectId.isValid(storyId)) {
-    throw new AppError("Invalid story ID", 400);
   }
 
   const storyExists = await Story.exists({ _id: storyId });
