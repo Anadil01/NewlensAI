@@ -1,10 +1,8 @@
 const express = require("express");
-const dotenv = require("dotenv");
 const cors = require("cors");
 const connectDB = require("./config/db");
 const scrapeStories = require("./services/scraperService");
-
-dotenv.config();
+const config = require("./config/env");
 
 const app = express();
 app.use(
@@ -17,7 +15,6 @@ app.use(express.json());
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api", require("./routes/storyRoutes"));
 
-const PORT = process.env.PORT || 5001;
 const SCRAPE_INTERVAL_MS = 60 * 60 * 1000;
 
 const runScheduledScrape = async () => {
@@ -32,8 +29,8 @@ const startServer = async () => {
   try {
     await connectDB();
 
-    app.listen(PORT, () => {
-      console.log(`Server running on ${PORT}`);
+    app.listen(config.port, () => {
+      console.log(`Server running on ${config.port}`);
     });
 
     runScheduledScrape();
