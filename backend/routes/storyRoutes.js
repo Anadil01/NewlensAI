@@ -3,7 +3,8 @@ const express = require("express");
 const validate = require("../middleware/validateMiddleware");
 
 const {
-  storyIdParamsSchema
+  storyIdParamsSchema,
+  storyQuerySchema
 } = require("../validations/storyValidation");
 
 const {
@@ -18,7 +19,11 @@ const protect = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-router.get("/stories", getStories);
+router.get(
+  "/stories",
+  validate(storyQuerySchema, "query"),
+  getStories
+);
 
 router.get(
   "/stories/:id",

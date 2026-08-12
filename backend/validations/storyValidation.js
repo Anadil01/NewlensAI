@@ -11,6 +11,7 @@ const objectIdSchema = z
 const storyIdParamsSchema = z.object({
   id: objectIdSchema
 });
+
 const storyQuerySchema = z.object({
   page: z.coerce
     .number()
@@ -30,6 +31,7 @@ const storyQuerySchema = z.object({
     .trim()
     .default("")
 });
+
 module.exports = {
   storyIdParamsSchema,
   storyQuerySchema

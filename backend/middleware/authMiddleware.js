@@ -1,27 +1,29 @@
 const jwt = require("jsonwebtoken");
+
 const config = require("../config/env");
+const AppError = require("../utils/AppError");
 
 const protect = (req, res, next) => {
-  let token = req.headers.authorization;
+  const authHeader = req.headers.authorization;
 
-  if (!token || !token.startsWith("Bearer")) {
-    return res.status(401).json({
-      message: "Not authorized"
-    });
+  if (!authHeader) {
+    throw new AppError("Authentication required", 401);
+  }
+
+  const [scheme, token] = authHeader.split(" ");
+
+  if (scheme !== "Bearer" || !token) {
+    throw new AppError("Invalid authorization header", 401);
   }
 
   try {
-    token = token.split(" ")[1];
-
     const decoded = jwt.verify(token, config.jwtSecret);
 
     req.user = decoded.id;
 
     next();
   } catch (error) {
-    res.status(401).json({
-      message: "Token failed"
-    });
+    throw new AppError("Invalid or expired token", 401);
   }
 };
 
