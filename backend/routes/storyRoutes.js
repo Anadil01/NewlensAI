@@ -1,6 +1,7 @@
 const express = require("express");
 
 const validate = require("../middleware/validateMiddleware");
+const requireAdmin = require("../middleware/adminMiddleware");
 
 const {
   storyIdParamsSchema,
@@ -31,7 +32,7 @@ router.get(
   getSingleStory
 );
 
-router.post("/scrape", triggerScrape);
+router.post("/scrape", requireAdmin, triggerScrape);
 
 router.post(
   "/stories/:id/bookmark",

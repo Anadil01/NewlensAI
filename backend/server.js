@@ -4,15 +4,19 @@ const connectDB = require("./config/db");
 const scrapeStories = require("./services/scraperService");
 const config = require("./config/env");
 const AppError = require("./utils/AppError");
-
+const securityHeaders = require("./middleware/securityMiddleware");
 
 const app = express();
+app.use(securityHeaders);
 app.use(
   cors({
-    origin: "*"
+    origin:config.clientUrl
   })
 );
-app.use(express.json());
+app.use(express.json({
+  limit: "1mb"
+}));
+
 
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api", require("./routes/storyRoutes"));
