@@ -16,15 +16,21 @@ const protect = (req, res, next) => {
     throw new AppError("Invalid authorization header", 401);
   }
 
+  let decoded;
+
   try {
-    const decoded = jwt.verify(token, config.jwtSecret);
-
-    req.user = decoded.id;
-
-    next();
+    decoded = jwt.verify(token, config.jwtSecret);
   } catch (error) {
     throw new AppError("Invalid or expired token", 401);
   }
+
+  if (!decoded.sub) {
+    throw new AppError("Invalid token", 401);
+  }
+
+  req.user = decoded.sub;
+
+  next();
 };
 
 module.exports = protect;

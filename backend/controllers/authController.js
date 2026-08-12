@@ -5,8 +5,9 @@ const jwt = require("jsonwebtoken");
 const asyncHandler = require("../utils/asyncHandler");
 const AppError = require("../utils/AppError");
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+
+const generateToken = (userId) => {
+  return jwt.sign({sub: userId.toString()}, process.env.JWT_SECRET, {
     expiresIn: "7d"
   });
 };
@@ -41,7 +42,7 @@ exports.registerUser = asyncHandler(async (req, res) => {
 exports.loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ email }).select("+password");
 
   if (
     user &&
