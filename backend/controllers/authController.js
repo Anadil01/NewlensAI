@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 
 const asyncHandler = require("../utils/asyncHandler");
 const AppError = require("../utils/AppError");
-
+const ApiResponse = require("../utils/ApiResponse");
 
 const generateToken = (userId) => {
   return jwt.sign({sub: userId.toString()}, process.env.JWT_SECRET, {
@@ -31,13 +31,21 @@ exports.registerUser = asyncHandler(async (req, res) => {
     password: hashedPassword
   });
 
-  res.status(201).json({
-    _id: user._id,
-    name: user.name,
-    email: user.email,
-    token: generateToken(user._id)
-  });
+  return ApiResponse.success(
+    res,
+    {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      token: generateToken(user._id)
+    },
+    "User registered successfully",
+    201
+  );
+
 });
+
+
 
 exports.loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
@@ -48,12 +56,16 @@ exports.loginUser = asyncHandler(async (req, res) => {
     user &&
     (await bcrypt.compare(password, user.password))
   ) {
-    return res.json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      token: generateToken(user._id)
-    });
+    return ApiResponse.success(
+      res,
+      {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        token: generateToken(user._id)
+      },
+      "Login successful"
+    );
   }
 
   throw new AppError("Invalid credentials", 401);

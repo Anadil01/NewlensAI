@@ -4,6 +4,8 @@ const scrapeStories = require("../services/scraperService");
 
 const asyncHandler = require("../utils/asyncHandler");
 const AppError = require("../utils/AppError");
+const ApiResponse = require("../utils/ApiResponse");
+
 
 exports.getStories = asyncHandler(async (req, res) => {
   const page = Math.max(
@@ -47,20 +49,24 @@ exports.getStories = asyncHandler(async (req, res) => {
     .skip((page - 1) * limit)
     .limit(limit);
 
-  res.json({
-    stories,
-    pagination: {
-      total,
-      page,
-      limit,
-      totalPages: Math.max(
-        Math.ceil(total / limit),
-        1
-      ),
-      hasNextPage: page * limit < total,
-      hasPreviousPage: page > 1
-    }
-  });
+    return ApiResponse.success(
+      res,
+      {
+        stories,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.max(
+            Math.ceil(total / limit),
+            1
+          ),
+          hasNextPage: page * limit < total,
+          hasPreviousPage: page > 1
+        }
+      },
+      "Stories fetched successfully"
+    );
 });
 
 exports.getSingleStory = asyncHandler( async (req, res) => {
@@ -72,7 +78,11 @@ exports.getSingleStory = asyncHandler( async (req, res) => {
       throw new AppError("Story not found", 404);
     }
 
-    res.json(story);
+    return ApiResponse.success(
+      res,
+      story,
+      "Story fetched successfully"
+    );
  
   
 });
@@ -80,9 +90,11 @@ exports.getSingleStory = asyncHandler( async (req, res) => {
 exports.triggerScrape = asyncHandler(async (req, res) => {
   await scrapeStories();
 
-  res.json({
-    message: "Scraping completed successfully"
-  });
+  return ApiResponse.success(
+    res,
+    null,
+    "Scraping completed successfully"
+  );
 });
 
 exports.toggleBookmark = asyncHandler(async (req, res) => {
@@ -113,12 +125,15 @@ exports.toggleBookmark = asyncHandler(async (req, res) => {
 
   await user.save();
 
-  res.json({
-    message: alreadyBookmarked
+  return ApiResponse.success(
+    res,
+    {
+      bookmarks: user.bookmarks
+    },
+    alreadyBookmarked
       ? "Bookmark removed"
-      : "Bookmark added",
-    bookmarks: user.bookmarks
-  });
+      : "Bookmark added"
+  );
 });
 
 exports.getBookmarks = asyncHandler(async (req, res) => {
@@ -129,5 +144,11 @@ exports.getBookmarks = asyncHandler(async (req, res) => {
     throw new AppError("User not found", 404);
   }
 
-  res.json(user.bookmarks);
+  return ApiResponse.success(
+    res,
+    {
+      bookmarks: user.bookmarks
+    },
+    "Bookmarks fetched successfully"
+  );
 });

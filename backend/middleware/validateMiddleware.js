@@ -1,8 +1,8 @@
 const AppError = require("../utils/AppError");
 
-const validate = (schema, source = "body") => {
+const validate = (schema, property) => {
   return (req, res, next) => {
-    const result = schema.safeParse(req[source]);
+    const result = schema.safeParse(req[property]);
 
     if (!result.success) {
       const errors = result.error.issues.map((issue) => ({
@@ -10,15 +10,14 @@ const validate = (schema, source = "body") => {
         message: issue.message
       }));
 
-      const error = new AppError("Validation failed", 400);
-
-      error.code = "VALIDATION_ERROR";
-      error.errors = errors;
-
-      return next(error);
+      throw new AppError(
+        "Validation failed",
+        400,
+        errors
+      );
     }
 
-    req[source] = result.data;
+    req[property] = result.data;
 
     next();
   };
