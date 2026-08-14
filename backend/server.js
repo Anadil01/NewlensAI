@@ -34,11 +34,33 @@ app.use(errorHandler);
 
 const SCRAPE_INTERVAL_MS = 60 * 60 * 1000;
 
+let isScraping = false;
+
 const runScheduledScrape = async () => {
+  if (isScraping) {
+    console.log(
+      "Scrape already running. Skipping."
+    );
+
+    return;
+  }
+
+  isScraping = true;
+
   try {
-    await scrapeStories();
+    const result = await scrapeStories();
+
+    console.log(
+      "Scheduled scrape completed:",
+      result
+    );
   } catch (error) {
-    console.log("Scheduled scrape failed:", error.message);
+    console.error(
+      "Scheduled scrape failed:",
+      error
+    );
+  } finally {
+    isScraping = false;
   }
 };
 

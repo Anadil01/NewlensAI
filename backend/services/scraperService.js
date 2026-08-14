@@ -1,10 +1,13 @@
-const axios = require("axios");
 const cheerio = require("cheerio");
 const Story = require("../models/Story");
 
+const {
+  fetchHackerNewsHomepage
+} = require("../integrations/news/hackerNewsClient");
+
 const scrapeStories = async () => {
   try {
-    const { data } = await axios.get("https://news.ycombinator.com/");
+    const data = await fetchHackerNewsHomepage();
     const $ = cheerio.load(data);
 
     const stories = [];
@@ -27,6 +30,11 @@ const scrapeStories = async () => {
     await Story.insertMany(stories);
 
     console.log("Stories scraped successfully");
+    return {
+      fetched: stories.length,
+      inserted: stories.length,
+      skipped: 0
+    };
   } catch (error) {
     console.log("Scraper Error:", error.message);
     throw error;
