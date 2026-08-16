@@ -1,15 +1,7 @@
 const { z } = require("zod");
-const mongoose = require("mongoose");
-
-const objectIdSchema = z
-  .string()
-  .refine(
-    (id) => mongoose.Types.ObjectId.isValid(id),
-    "Invalid story ID"
-  );
 
 const storyIdParamsSchema = z.object({
-  id: objectIdSchema
+  id: z.uuid("Invalid story ID")
 });
 
 const storyQuerySchema = z.object({

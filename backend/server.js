@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const connectDB = require("./config/db");
+// const connectDB = require("./config/db");
 const scrapeStories = require("./services/scraperService");
 const config = require("./config/env");
 const AppError = require("./utils/AppError");
@@ -66,18 +66,22 @@ const runScheduledScrape = async () => {
 
 const startServer = async () => {
   try {
-    await connectDB();
-
     app.listen(config.port, () => {
       console.log(`Server running on ${config.port}`);
     });
 
     runScheduledScrape();
-    setInterval(runScheduledScrape, SCRAPE_INTERVAL_MS);
+    setInterval(
+      runScheduledScrape,
+      SCRAPE_INTERVAL_MS
+    );
   } catch (error) {
-    console.log("Server startup failed:", error.message);
+    console.log(
+      "Server startup failed:",
+      error.message
+    );
+
     process.exit(1);
   }
 };
-
 startServer();

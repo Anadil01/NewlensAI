@@ -1,55 +1,93 @@
-const User = require("../models/User");
-const Story = require("../models/Story");
+const prisma = require("../utils/prisma");
 const AppError = require("../utils/AppError");
 
 const toggleBookmark = async (userId, storyId) => {
-  const user = await User.findById(userId);
+  // Verify user exists
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId
+    }
+  });
 
   if (!user) {
     throw new AppError("User not found", 404);
   }
 
-  const storyExists = await Story.exists({
-    _id: storyId
+  // Verify story exists
+  const story = await prisma.story.findUnique({
+    where: {
+      id: storyId
+    }
   });
 
-  if (!storyExists) {
+  if (!story) {
     throw new AppError("Story not found", 404);
   }
 
-  const alreadyBookmarked = user.bookmarks.some(
-    (id) => id.toString() === storyId.toString()
-  );
+  // Check whether bookmark already exists
+  const existingBookmark =
+    await prisma.bookmark.findUnique({
+      where: {
+        userId_storyId: {
+          userId,
+          storyId
+        }
+      }
+    });
 
-  if (alreadyBookmarked) {
-    user.bookmarks = user.bookmarks.filter(
-      (id) => id.toString() !== storyId.toString()
-    );
-  } else {
-    user.bookmarks.push(storyId);
+  // Remove bookmark
+  if (existingBookmark) {
+    await prisma.bookmark.delete({
+      where: {
+        id: existingBookmark.id
+      }
+    });
+
+    return {
+      bookmarked: false
+    };
   }
 
-  await user.save();
+  // Add bookmark
+  await prisma.bookmark.create({
+    data: {
+      userId,
+      storyId
+    }
+  });
 
   return {
-    bookmarks: user.bookmarks,
-    bookmarked: !alreadyBookmarked
+    bookmarked: true
   };
 };
 
 const getBookmarks = async (userId) => {
-    const user = await User.findById(userId)
-      .populate("bookmarks");
-  
-    if (!user) {
-      throw new AppError("User not found", 404);
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId
     }
-  
-    return {
-      bookmarks: user.bookmarks
-    };
-  };
+  });
 
+  if (!user) {
+    throw new AppError("User not found", 404);
+  }
+
+  const bookmarks = await prisma.bookmark.findMany({
+    where: {
+      userId
+    },
+    include: {
+      story: true
+    },
+    orderBy: {
+      createdAt: "desc"
+    }
+  });
+
+  return {
+    bookmarks
+  };
+};
 
 module.exports = {
   toggleBookmark,

@@ -12,3 +12,4 @@ coverage/
 tmp/
 temp/
 .env
+/generated/prisma

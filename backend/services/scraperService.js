@@ -1,5 +1,6 @@
 const cheerio = require("cheerio");
-const Story = require("../models/Story");
+
+const prisma = require("../utils/prisma");
 
 const {
   fetchHackerNewsHomepage
@@ -13,30 +14,128 @@ const scrapeStories = async () => {
     const stories = [];
 
     $(".athing").each((i, el) => {
-      if (i < 10) {
-        const title = $(el).find(".titleline a").text();
-        const url = $(el).find(".titleline a").attr("href");
+      if (i >= 10) {
+        return;
+      }
 
-        const subtext = $(el).next();
-        const points = parseInt(subtext.find(".score").text()) || 0;
-        const author = subtext.find(".hnuser").text();
-        const postedAt = subtext.find(".age").text();
+      const externalId = $(el).attr("id");
 
-        stories.push({ title, url, points, author, postedAt });
+      const title = $(el)
+        .find(".titleline a")
+        .text()
+        .trim();
+
+      let url = $(el)
+        .find(".titleline a")
+        .attr("href");
+
+      const subtext = $(el).next();
+
+      const points =
+        parseInt(
+          subtext.find(".score").text(),
+          10
+        ) || 0;
+
+      const author =
+        subtext.find(".hnuser").text().trim() || null;
+
+      if (url && url.startsWith("/")) {
+        url = `https://news.ycombinator.com${url}`;
+      }
+
+      if (!externalId || !title || !url) {
+        return;
+      }
+
+      stories.push({
+        externalId,
+        title,
+        url,
+        points,
+        author
+      });
+    });
+
+    const source = await prisma.source.upsert({
+      where: {
+        slug: "hacker-news"
+      },
+      update: {
+        name: "Hacker News",
+        websiteUrl: "https://news.ycombinator.com",
+        isActive: true
+      },
+      create: {
+        name: "Hacker News",
+        slug: "hacker-news",
+        websiteUrl: "https://news.ycombinator.com",
+        type: "WEBSITE"
       }
     });
 
-    await Story.deleteMany();
-    await Story.insertMany(stories);
+    let inserted = 0;
+    let updated = 0;
+    let skipped = 0;
 
-    console.log("Stories scraped successfully");
+    for (const story of stories) {
+      const existingStory =
+        await prisma.story.findUnique({
+          where: {
+            sourceId_externalId: {
+              sourceId: source.id,
+              externalId: story.externalId
+            }
+          }
+        });
+
+      if (existingStory) {
+        await prisma.story.update({
+          where: {
+            id: existingStory.id
+          },
+          data: {
+            title: story.title,
+            canonicalUrl: story.url,
+            author: story.author,
+            points: story.points
+          }
+        });
+
+        updated++;
+      } else {
+        await prisma.story.create({
+          data: {
+            sourceId: source.id,
+            externalId: story.externalId,
+            canonicalUrl: story.url,
+            title: story.title,
+            author: story.author,
+            points: story.points,
+            contentStatus: "EXTERNAL_ONLY"
+          }
+        });
+
+        inserted++;
+      }
+    }
+
+    console.log(
+      `Stories scraped successfully: ${inserted} inserted, ${updated} updated, ${skipped} skipped`
+    );
+
     return {
       fetched: stories.length,
-      inserted: stories.length,
-      skipped: 0
+      inserted,
+      updated,
+      skipped
     };
   } catch (error) {
-    console.log("Scraper Error:", error.message);
+    console.error(
+      "Scraper Error:",
+      error.message
+    );
+
     throw error;
   }
 };
