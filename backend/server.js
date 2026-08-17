@@ -1,10 +1,12 @@
 const express = require("express");
 const cors = require("cors");
-// const connectDB = require("./config/db");
 const scrapeStories = require("./services/scraperService");
 const config = require("./config/env");
 const AppError = require("./utils/AppError");
 const securityHeaders = require("./middleware/securityMiddleware");
+const { connectRedis } = require("./utils/redis");
+
+
 
 const app = express();
 app.use(securityHeaders);
@@ -21,9 +23,7 @@ app.use(express.json({
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api", require("./routes/storyRoutes"));
 
-// app.get("/test-error", (req, res, next) => {
-//   next(new Error("Unexpected failure"));
-// });
+
 
 const notFound = require("./middleware/notFoundMiddleware");
 const errorHandler = require("./middleware/errorMiddleware");
@@ -66,15 +66,15 @@ const runScheduledScrape = async () => {
 
 const startServer = async () => {
   try {
+
+    await connectRedis();
+
     app.listen(config.port, () => {
       console.log(`Server running on ${config.port}`);
     });
 
     runScheduledScrape();
-    setInterval(
-      runScheduledScrape,
-      SCRAPE_INTERVAL_MS
-    );
+    setInterval(runScheduledScrape, SCRAPE_INTERVAL_MS);
   } catch (error) {
     console.log(
       "Server startup failed:",

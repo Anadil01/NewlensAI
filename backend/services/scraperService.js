@@ -3,6 +3,9 @@ const cheerio = require("cheerio");
 const prisma = require("../utils/prisma");
 
 const {
+  invalidateStoryCaches
+} = require("./storyCacheService");
+const {
   fetchHackerNewsHomepage
 } = require("../integrations/news/hackerNewsClient");
 
@@ -120,6 +123,7 @@ const scrapeStories = async () => {
       }
     }
 
+    await invalidateStoryCaches();
     console.log(
       `Stories scraped successfully: ${inserted} inserted, ${updated} updated, ${skipped} skipped`
     );
