@@ -13,13 +13,20 @@ const {
   getSingleStory,
   toggleBookmark,
   getBookmarks,
-  triggerScrape
+  triggerScrape,
 } = require("../controllers/storyController");
+
 
 const protect = require("../middleware/authMiddleware");
 
 const router = express.Router();
+const storyController = require("../controllers/storyController");
 
+
+router.get(
+  "/stories/search",
+  storyController.searchStories
+);
 router.get(
   "/stories",
   validate(storyQuerySchema, "query"),

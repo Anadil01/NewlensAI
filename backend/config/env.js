@@ -16,7 +16,8 @@ const config = {
   port: process.env.PORT || 5001,
   jwtSecret: process.env.JWT_SECRET,
   clientUrl: process.env.CLIENT_URL || "http://localhost:5173",
-  redisUrl: process.env.REDIS_URL
+  redisUrl: process.env.REDIS_URL,
+  elasticsearchUrl: process.env.ELASTICSEARCH_URL,
 };
 
 

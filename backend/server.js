@@ -6,6 +6,12 @@ const AppError = require("./utils/AppError");
 const securityHeaders = require("./middleware/securityMiddleware");
 const { connectRedis } = require("./utils/redis");
 
+const {
+  connectElasticsearch
+} = require("./utils/elasticsearch");
+const {
+  createStoriesIndex
+} = require("./services/searchIndexService");
 
 
 const app = express();
@@ -68,7 +74,9 @@ const startServer = async () => {
   try {
 
     await connectRedis();
-
+    await connectElasticsearch();
+    await createStoriesIndex();
+    
     app.listen(config.port, () => {
       console.log(`Server running on ${config.port}`);
     });

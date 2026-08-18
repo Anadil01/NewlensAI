@@ -26,4 +26,4 @@
 26. Docker                                 ⏳
 27. AWS deployment                         ⏳
 28. Production optimization                ⏳
-29. Final frontend improvements             ⏳
+29. Final frontend improvements            ⏳

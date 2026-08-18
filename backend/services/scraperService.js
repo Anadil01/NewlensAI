@@ -8,6 +8,10 @@ const {
 const {
   fetchHackerNewsHomepage
 } = require("../integrations/news/hackerNewsClient");
+const {
+  indexStory
+} = require("./searchService");
+
 
 const scrapeStories = async () => {
   try {
@@ -92,35 +96,42 @@ const scrapeStories = async () => {
           }
         });
 
-      if (existingStory) {
-        await prisma.story.update({
-          where: {
-            id: existingStory.id
-          },
-          data: {
-            title: story.title,
-            canonicalUrl: story.url,
-            author: story.author,
-            points: story.points
-          }
-        });
-
-        updated++;
-      } else {
-        await prisma.story.create({
-          data: {
-            sourceId: source.id,
-            externalId: story.externalId,
-            canonicalUrl: story.url,
-            title: story.title,
-            author: story.author,
-            points: story.points,
-            contentStatus: "EXTERNAL_ONLY"
-          }
-        });
-
-        inserted++;
-      }
+        if (existingStory) {
+          const updatedStory =
+            await prisma.story.update({
+              where: {
+                id: existingStory.id
+              },
+        
+              data: {
+                title: story.title,
+                canonicalUrl: story.url,
+                author: story.author,
+                points: story.points
+              }
+            });
+        
+          await indexStory(updatedStory);
+        
+          updated++;
+        } else {
+          const createdStory =
+            await prisma.story.create({
+              data: {
+                sourceId: source.id,
+                externalId: story.externalId,
+                canonicalUrl: story.url,
+                title: story.title,
+                author: story.author,
+                points: story.points,
+                contentStatus: "EXTERNAL_ONLY"
+              }
+            });
+        
+          await indexStory(createdStory);
+        
+          inserted++;
+        }
     }
 
     await invalidateStoryCaches();
