@@ -1,4 +1,10 @@
-const scrapeStories = require("../services/scraperService");
+const {
+  getSourceBySlug
+} = require("../config/sources");
+
+const {
+  scrapeSource
+} = require("../services/sourceScraperService");
 
 const asyncHandler = require("../utils/asyncHandler");
 const AppError = require("../utils/AppError");
@@ -58,19 +64,32 @@ exports.getSingleStory = asyncHandler(
   }
 );
 
-exports.triggerScrape = asyncHandler(async (req, res) => {
-  const result = await scrapeStories();
+exports.triggerScrape = asyncHandler(
+  async (req, res) => {
+    const source =
+      getSourceBySlug("hacker-news");
 
-console.log(
-  `Scrape completed: ${result.inserted} inserted, ${result.skipped} skipped`
+    if (!source) {
+      throw new AppError(
+        "Hacker News source not found",
+        404
+      );
+    }
+
+    const result =
+      await scrapeSource(source);
+
+    console.log(
+      `Scrape completed: ${result.inserted} inserted, ${result.updated} updated, ${result.skipped} skipped`
+    );
+
+    return ApiResponse.success(
+      res,
+      result,
+      "Scraping completed successfully"
+    );
+  }
 );
- 
-  return ApiResponse.success(
-    res,
-    null,
-    "Scraping completed successfully"
-  );
-});
 
 exports.toggleBookmark = asyncHandler(async (req, res) => {
   const result = await bookmarkService.toggleBookmark(

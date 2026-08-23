@@ -1,6 +1,14 @@
 const express = require("express");
 const cors = require("cors");
-const scrapeStories = require("./services/scraperService");
+const {
+  getSourceBySlug
+} = require("./config/sources");
+const {
+  recoverStaleScrapeRuns
+} = require("./services/scrapeRunService");
+const {
+  scrapeSource
+} = require("./services/sourceScraperService");
 const config = require("./config/env");
 const AppError = require("./utils/AppError");
 const securityHeaders = require("./middleware/securityMiddleware");
@@ -54,7 +62,17 @@ const runScheduledScrape = async () => {
   isScraping = true;
 
   try {
-    const result = await scrapeStories();
+    const source =
+  getSourceBySlug("hacker-news");
+
+if (!source) {
+  throw new Error(
+    "Hacker News source not found"
+  );
+}
+
+const result =
+  await scrapeSource(source);
 
     console.log(
       "Scheduled scrape completed:",
@@ -76,6 +94,7 @@ const startServer = async () => {
     await connectRedis();
     await connectElasticsearch();
     await createStoriesIndex();
+    await recoverStaleScrapeRuns();
     
     app.listen(config.port, () => {
       console.log(`Server running on ${config.port}`);

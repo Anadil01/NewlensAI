@@ -9,13 +9,13 @@
 9. Service layer / business logic          ✅
 10. Database redesign                      ✅
 11. PostgreSQL                             ✅
-12. Prisma                                 🟡
-13. Database indexes/query optimization    ⏳
-14. Redis                                  ⏳
-15. Search / Elasticsearch                 ⏳
-16. Scraping architecture                  ⏳
+12. Prisma                                 ✅
+13. Database indexes/query optimization    ✅
+14. Redis                                  ✅
+15. Search / Elasticsearch                 ✅
+16. Scraping architecture                  ✅
 17. Background jobs / queues               ⏳
-18. AI pipeline                            ⏳
+18. AI pipeline                            🟡
 19. Personalization                        ⏳
 20. Story clustering                       ⏳
 21. Bias system                            ⏳

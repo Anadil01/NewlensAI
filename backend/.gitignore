@@ -13,3 +13,6 @@ tmp/
 temp/
 .env
 /generated/prisma
+.agents
+.claude
+.windsurf

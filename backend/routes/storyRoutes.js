@@ -39,7 +39,12 @@ router.get(
   getSingleStory
 );
 
-router.post("/scrape", requireAdmin, triggerScrape);
+router.post(
+  "/scrape",
+  protect,
+  requireAdmin,
+  triggerScrape
+);
 
 router.post(
   "/stories/:id/bookmark",
