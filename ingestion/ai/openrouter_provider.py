@@ -47,8 +47,9 @@ class OpenRouterProvider(AIProvider):
                     "content": """
 You are a professional news summarization assistant.
 
-Analyze the provided news article and return ONLY
-valid JSON.
+Analyze the provided news article.
+
+Return ONLY valid JSON.
 
 Required structure:
 
@@ -73,7 +74,13 @@ Rules:
 4. Do not include markdown.
 5. confidence must be between 0 and 1.
 6. Return valid JSON only.
-"""
+7. Do not return explanations outside the JSON.
+8. Do not return <think> tags.
+9. Do not wrap the JSON in markdown code fences.
+10. Make sure all JSON strings are properly escaped.
+11. Always close every JSON object and array.
+12. Do not truncate the response.
+""",
                 },
                 {
                     "role": "user",
@@ -81,9 +88,9 @@ Rules:
                 },
             ],
 
-            temperature=0.2,
+            temperature=0.1,
 
-            max_tokens=500,
+            max_tokens=800,
 
             response_format={
                 "type": "json_object"
@@ -104,30 +111,195 @@ Rules:
         content: str,
     ) -> dict[str, Any]:
 
+        if not content:
+            raise ValueError(
+                "OpenRouter returned an empty response"
+            )
+
+        content = content.strip()
+
+        # -----------------------------------------
+        # Remove possible <think>...</think>
+        # -----------------------------------------
+
+        if "<think>" in content:
+
+            think_end = content.find("</think>")
+
+            if think_end != -1:
+
+                content = content[
+                    think_end + len("</think>"):
+                ].strip()
+
+        # -----------------------------------------
+        # Remove markdown code fences
+        # -----------------------------------------
+
+        if content.startswith("```"):
+
+            lines = content.splitlines()
+
+            if lines:
+                lines = lines[1:]
+
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+
+            content = "\n".join(lines).strip()
+
+        # -----------------------------------------
+        # Parse JSON
+        # -----------------------------------------
+
         try:
+
             result = json.loads(content)
 
-        except json.JSONDecodeError as exc:
+        except json.JSONDecodeError:
+
+            # -------------------------------------
+            # Try to find JSON inside response
+            # -------------------------------------
+
+            start = content.find("{")
+            end = content.rfind("}")
+
+            if (
+                start == -1
+                or end == -1
+                or end <= start
+            ):
+                raise ValueError(
+                    "OpenRouter returned invalid JSON"
+                )
+
+            json_content = content[
+                start:end + 1
+            ]
+
+            try:
+
+                result = json.loads(
+                    json_content
+                )
+
+            except json.JSONDecodeError as exc:
+
+                raise ValueError(
+                    "OpenRouter returned invalid JSON"
+                ) from exc
+
+        # -----------------------------------------
+        # Make sure result is a JSON object
+        # -----------------------------------------
+
+        if not isinstance(result, dict):
+
             raise ValueError(
-                "OpenRouter returned invalid JSON"
-            ) from exc
+                "OpenRouter JSON response must "
+                "be an object"
+            )
+
+        # -----------------------------------------
+        # Validate summary
+        # -----------------------------------------
+
+        summary = result.get(
+            "summary",
+            ""
+        )
+
+        if not isinstance(summary, str):
+
+            summary = str(summary)
+
+        summary = summary.strip()
+
+        if not summary:
+
+            raise ValueError(
+                "AI response does not contain "
+                "a valid summary"
+            )
+
+        # -----------------------------------------
+        # Validate key points
+        # -----------------------------------------
+
+        key_points = result.get(
+            "keyPoints",
+            []
+        )
+
+        if not isinstance(
+            key_points,
+            list
+        ):
+            key_points = []
+
+        key_points = [
+            str(point).strip()
+            for point in key_points
+            if point is not None
+        ]
+
+        # -----------------------------------------
+        # Validate entities
+        # -----------------------------------------
+
+        entities = result.get(
+            "entities",
+            []
+        )
+
+        if not isinstance(
+            entities,
+            list
+        ):
+            entities = []
+
+        entities = [
+            str(entity).strip()
+            for entity in entities
+            if entity is not None
+        ]
+
+        # -----------------------------------------
+        # Validate confidence
+        # -----------------------------------------
+
+        confidence = result.get(
+            "confidence"
+        )
+
+        if confidence is not None:
+
+            try:
+
+                confidence = float(
+                    confidence
+                )
+
+                confidence = max(
+                    0.0,
+                    min(1.0, confidence)
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                confidence = None
+
+        # -----------------------------------------
+        # Return normalized response
+        # -----------------------------------------
 
         return {
-            "summary": (
-                result.get("summary", "").strip()
-            ),
-
-            "keyPoints": result.get(
-                "keyPoints",
-                []
-            ),
-
-            "entities": result.get(
-                "entities",
-                []
-            ),
-
-            "confidence": result.get(
-                "confidence"
-            ),
+            "summary": summary,
+            "keyPoints": key_points,
+            "entities": entities,
+            "confidence": confidence,
         }

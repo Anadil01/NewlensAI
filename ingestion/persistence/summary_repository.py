@@ -128,3 +128,60 @@ def save_summary(
     finally:
 
         connection.close()
+
+
+def get_summary_for_story(
+    story_id,
+):
+    """
+    Return the most recent cached summary
+    for a story.
+
+    Returns None if no summary exists.
+    """
+
+    if not story_id:
+        raise ValueError(
+            "story_id cannot be empty"
+        )
+
+    connection = get_connection()
+
+    try:
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                id,
+                story_id,
+                summary,
+                model,
+                version,
+                created_at
+            FROM ai_summaries
+            WHERE story_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (story_id,),
+        )
+
+        row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return {
+            "summary_id": str(row[0]),
+            "story_id": str(row[1]),
+            "summary": row[2],
+            "model": row[3],
+            "version": row[4],
+            "created_at": row[5],
+        }
+
+    finally:
+
+        connection.close()
