@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,20 +6,14 @@ datasource db {
   provider = "postgresql"
 }
 
-enum UserRole {
-  USER
-  ADMIN
-}
-
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  name         String
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  role         UserRole @default(USER)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
+  id             String           @id @default(uuid()) @db.Uuid
+  name           String
+  email          String           @unique
+  passwordHash   String           @map("password_hash")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  role           UserRole         @default(USER)
   bookmarks      Bookmark[]
   readingHistory ReadingHistory[]
   preferences    UserPreference[]
@@ -32,30 +21,17 @@ model User {
   @@map("users")
 }
 
-enum SourceType {
-  WEBSITE
-  RSS
-  API
-}
-
-enum ScrapeRunStatus {
-  RUNNING
-  SUCCESS
-  FAILED
-}
-
 model Source {
-  id         String     @id @default(uuid()) @db.Uuid
+  id         String      @id @default(uuid()) @db.Uuid
   name       String
-  slug       String     @unique
-  websiteUrl String     @map("website_url")
+  slug       String      @unique
+  websiteUrl String      @map("website_url")
   type       SourceType
-  isActive   Boolean    @default(true) @map("is_active")
-  createdAt  DateTime   @default(now()) @map("created_at")
-  updatedAt  DateTime   @updatedAt @map("updated_at")
-
-  stories    Story[]
+  isActive   Boolean     @default(true) @map("is_active")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
   scrapeRuns ScrapeRun[]
+  stories    Story[]
 
   @@map("sources")
 }
@@ -72,43 +48,35 @@ model ScrapeRun {
   updated     Int             @default(0)
   skipped     Int             @default(0)
   error       String?
-
-  source Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  source      Source          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
   @@index([sourceId, startedAt(sort: Desc)])
   @@index([status])
   @@map("scrape_runs")
 }
 
-enum ContentStatus {
-  FULL
-  SUMMARY_ONLY
-  EXTERNAL_ONLY
-}
-
 model Story {
-  id            String        @id @default(uuid()) @db.Uuid
-  sourceId      String        @map("source_id") @db.Uuid
-  externalId    String        @map("external_id")
-  canonicalUrl  String        @map("canonical_url")
-  title         String
-  author        String?
-  points        Int?
-  content       String?
-  excerpt       String?
-  contentStatus ContentStatus @default(EXTERNAL_ONLY) @map("content_status")
-  publishedAt   DateTime?     @map("published_at")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
-  clusterId     String?       @map("cluster_id") @db.Uuid
-
-  source  Source        @relation(fields: [sourceId], references: [id])
-  cluster StoryCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
-
+  id             String           @id @default(uuid()) @db.Uuid
+  sourceId       String           @map("source_id") @db.Uuid
+  externalId     String           @map("external_id")
+  canonicalUrl   String           @map("canonical_url")
+  title          String
+  author         String?
+  content        String?
+  excerpt        String?
+  contentStatus  ContentStatus    @default(EXTERNAL_ONLY) @map("content_status")
+  publishedAt    DateTime?        @map("published_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  clusterId      String?          @map("cluster_id") @db.Uuid
+  points         Int?
+  aiSummaries    AISummary[]
+  biasAnalysis   BiasAnalysis?
   bookmarks      Bookmark[]
   readingHistory ReadingHistory[]
+  cluster        StoryCluster?    @relation(fields: [clusterId], references: [id])
+  source         Source           @relation(fields: [sourceId], references: [id])
   storyTopics    StoryTopic[]
-  aiSummaries    AISummary[]
 
   @@unique([sourceId, externalId])
   @@index([sourceId, publishedAt(sort: Desc)])
@@ -122,9 +90,8 @@ model Bookmark {
   userId    String   @map("user_id") @db.Uuid
   storyId   String   @map("story_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
-
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, storyId])
   @@map("bookmarks")
@@ -137,20 +104,18 @@ model ReadingHistory {
   openedAt        DateTime @default(now()) @map("opened_at")
   durationSeconds Int?     @map("duration_seconds")
   completed       Boolean  @default(false)
-
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  story           Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, openedAt(sort: Desc)])
   @@map("reading_history")
 }
 
 model Topic {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
-
+  id          String           @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String           @unique
+  createdAt   DateTime         @default(now()) @map("created_at")
   storyTopics StoryTopic[]
   preferences UserPreference[]
 
@@ -160,9 +125,8 @@ model Topic {
 model StoryTopic {
   storyId String @map("story_id") @db.Uuid
   topicId String @map("topic_id") @db.Uuid
-
-  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
-  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  story   Story  @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  topic   Topic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
   @@id([storyId, topicId])
   @@index([topicId, storyId])
@@ -175,8 +139,7 @@ model StoryCluster {
   description String?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
-
-  stories Story[]
+  stories     Story[]
 
   @@map("story_clusters")
 }
@@ -188,9 +151,8 @@ model UserPreference {
   preference Int
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
-
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  topic      Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, topicId])
   @@map("user_preferences")
@@ -203,9 +165,44 @@ model AISummary {
   model     String
   version   String
   createdAt DateTime @default(now()) @map("created_at")
-
-  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
 
   @@unique([storyId, model, version])
   @@map("ai_summaries")
+}
+
+model BiasAnalysis {
+  id         String   @id @default(uuid()) @db.Uuid
+  storyId    String   @unique @map("story_id") @db.Uuid
+  biasScore  Float    @map("bias_score")
+  tone       String
+  confidence Float
+  signals    String?
+  createdAt  DateTime @map("created_at") @db.Timestamp(6)
+  story      Story    @relation(fields: [storyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("bias_analysis")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum SourceType {
+  WEBSITE
+  RSS
+  API
+}
+
+enum ScrapeRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum ContentStatus {
+  FULL
+  SUMMARY_ONLY
+  EXTERNAL_ONLY
 }
