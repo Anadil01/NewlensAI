@@ -1,1 +1,3 @@
 python-dotenv
+
+sentence-transformers==5.1.2

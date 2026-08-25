@@ -3,8 +3,7 @@ from clustering.story_clusterer import StoryClusterer
 from persistence.database import get_connection
 
 from persistence.cluster_repository import (
-    create_cluster,
-    assign_story_to_cluster
+    create_cluster_with_stories
 )
 
 
@@ -32,9 +31,7 @@ def get_stories_for_clustering(limit=20):
             (limit,)
         )
 
-
         rows = cursor.fetchall()
-
 
         stories = []
 
@@ -46,14 +43,11 @@ def get_stories_for_clustering(limit=20):
                 "content": row[2]
             })
 
-
         return stories
-
 
     finally:
 
         connection.close()
-
 
 
 def cluster_stories(
@@ -67,66 +61,48 @@ def cluster_stories(
             threshold=0.3
         )
 
-
     stories = get_stories_for_clustering(
         limit
     )
-
 
     if not stories:
 
         return []
 
-
     clusters = clusterer.cluster(
         stories
     )
 
-
     results = []
 
-
-    for index, cluster_story_ids in enumerate(clusters):
-
+    for index, cluster_story_ids in enumerate(
+        clusters
+    ):
 
         # Ignore single stories
         if len(cluster_story_ids) < 2:
 
             continue
 
-
         cluster_title = (
             f"News Cluster {index + 1}"
         )
 
-
-        cluster_id = create_cluster(
+        cluster_id = create_cluster_with_stories(
             title=cluster_title,
-            description=
-            "Automatically generated story cluster"
+            description=(
+                "Automatically generated story cluster"
+            ),
+            story_ids=cluster_story_ids
         )
 
-
-        for story_id in cluster_story_ids:
-
-            assign_story_to_cluster(
-                story_id,
-                cluster_id
-            )
-
-
         results.append({
-
             "cluster_id": cluster_id,
-
             "stories": cluster_story_ids
-
         })
-
 
         print(
             f"Created cluster {cluster_id}"
         )
-
 
     return results
