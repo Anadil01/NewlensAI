@@ -22,5 +22,5 @@ def normalize_hackernews_article(article):
         "content": None,
         "excerpt": None,
         "points": article.get("points"),
-        "published_at": None,
+        "published_at": article.get("published_at"),
     }

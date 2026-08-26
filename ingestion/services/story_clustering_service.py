@@ -18,15 +18,23 @@ def get_stories_for_clustering(limit=20):
         cursor.execute(
             """
             SELECT
-                id,
-                title,
-                content,
-                published_at
-            FROM stories
-            WHERE content IS NOT NULL
-              AND content != ''
-              AND cluster_id IS NULL
-            ORDER BY created_at ASC
+                s.id,
+                s.title,
+                s.content,
+                s.published_at,
+                COALESCE(a.entities, '[]'::jsonb) AS entities
+            FROM stories s
+            LEFT JOIN LATERAL (
+                SELECT entities
+                FROM ai_summaries
+                WHERE story_id = s.id
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) a ON TRUE
+            WHERE s.content IS NOT NULL
+              AND s.content != ''
+              AND s.cluster_id IS NULL
+            ORDER BY s.created_at ASC
             LIMIT %s
             """,
             (limit,)
@@ -42,7 +50,8 @@ def get_stories_for_clustering(limit=20):
                 "id": str(row[0]),
                 "title": row[1],
                 "content": row[2],
-                "published_at": row[3]
+                "published_at": row[3],
+                "entities": row[4] or []
             })
 
         return stories

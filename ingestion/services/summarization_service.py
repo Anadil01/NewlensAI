@@ -488,6 +488,12 @@ def summarize_stories(
                             "summary"
                         ]
                     ),
+                    "entities": (
+                        existing_summary.get(
+                            "entities",
+                            []
+                        )
+                    ),
                 }
             )
 
@@ -587,6 +593,7 @@ def summarize_stories(
                 summary=ai_result["summary"],
                 model=model_used,
                 version=version,
+                entities=ai_result["entities"],
             )
 
             results.append(

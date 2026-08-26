@@ -164,6 +164,7 @@ model AISummary {
   summary   String
   model     String
   version   String
+  entities  Json?
   createdAt DateTime @default(now()) @map("created_at")
   story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
 

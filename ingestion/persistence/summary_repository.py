@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 import uuid
 
+from psycopg2.extras import Json
+
 from persistence.database import get_connection
 
 
@@ -8,7 +10,8 @@ def save_summary(
     story_id,
     summary,
     model,
-    version
+    version,
+    entities=None
 ):
     """
     Save an AI-generated summary.
@@ -44,7 +47,7 @@ def save_summary(
 
         cursor = connection.cursor()
 
-        # Check whether this summary already exists
+        # Check whether this exact summary already exists
         cursor.execute(
             """
             SELECT id
@@ -69,11 +72,14 @@ def save_summary(
             cursor.execute(
                 """
                 UPDATE ai_summaries
-                SET summary = %s
+                SET
+                    summary = %s,
+                    entities = %s
                 WHERE id = %s
                 """,
                 (
                     summary,
+                    Json(entities or []),
                     summary_id
                 )
             )
@@ -94,10 +100,11 @@ def save_summary(
                     summary,
                     model,
                     version,
+                    entities,
                     created_at
                 )
                 VALUES (
-                    %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s
                 )
                 """,
                 (
@@ -106,6 +113,7 @@ def save_summary(
                     summary,
                     model,
                     version,
+                    Json(entities or []),
                     datetime.now(timezone.utc)
                 )
             )
@@ -132,17 +140,29 @@ def save_summary(
 
 def get_summary_for_story(
     story_id,
+    model,
+    version
 ):
     """
-    Return the most recent cached summary
-    for a story.
+    Return the cached summary for a story,
+    model, and version.
 
-    Returns None if no summary exists.
+    Returns None if no matching summary exists.
     """
 
     if not story_id:
         raise ValueError(
             "story_id cannot be empty"
+        )
+
+    if not model:
+        raise ValueError(
+            "model cannot be empty"
+        )
+
+    if not version:
+        raise ValueError(
+            "version cannot be empty"
         )
 
     connection = get_connection()
@@ -159,13 +179,20 @@ def get_summary_for_story(
                 summary,
                 model,
                 version,
+                entities,
                 created_at
             FROM ai_summaries
             WHERE story_id = %s
+              AND model = %s
+              AND version = %s
             ORDER BY created_at DESC
             LIMIT 1
             """,
-            (story_id,),
+            (
+                story_id,
+                model,
+                version
+            ),
         )
 
         row = cursor.fetchone()
@@ -179,7 +206,8 @@ def get_summary_for_story(
             "summary": row[2],
             "model": row[3],
             "version": row[4],
-            "created_at": row[5],
+            "entities": row[5] or [],
+            "created_at": row[6],
         }
 
     finally:
