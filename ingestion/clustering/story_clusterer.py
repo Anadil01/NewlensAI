@@ -202,9 +202,9 @@ class StoryClusterer:
         # -----------------------------------------
 
         if (
-            entity_overlap == 0.0
-            and semantic_similarity < 0.90
+            semantic_similarity < 0.30
             and title_similarity < 0.50
+            and entity_overlap == 0.0
         ):
             return 0.0
 
@@ -223,12 +223,9 @@ class StoryClusterer:
         # -----------------------------------------
 
         score = (
-            semantic_similarity
-            * SEMANTIC_WEIGHT
-            + title_similarity
-            * TITLE_WEIGHT
-            + entity_overlap
-            * ENTITY_WEIGHT
+            semantic_similarity * 0.60
+            + title_similarity * 0.25
+            + entity_overlap * 0.15
         )
 
         return float(score)

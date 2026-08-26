@@ -20,7 +20,8 @@ def get_stories_for_clustering(limit=20):
             SELECT
                 id,
                 title,
-                content
+                content,
+                published_at
             FROM stories
             WHERE content IS NOT NULL
               AND content != ''
@@ -40,7 +41,8 @@ def get_stories_for_clustering(limit=20):
             stories.append({
                 "id": str(row[0]),
                 "title": row[1],
-                "content": row[2]
+                "content": row[2],
+                "published_at": row[3]
             })
 
         return stories
