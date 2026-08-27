@@ -1,3 +1,6 @@
+import re
+
+
 class TopicClassifier:
 
     def __init__(self):
@@ -76,7 +79,12 @@ class TopicClassifier:
 
             for keyword in keywords:
 
-                if keyword in text:
+                # Word-boundary match so "ai" does not match inside
+                # "said", "email", "again", etc. re.escape keeps
+                # multi-word keywords ("machine learning") literal.
+                pattern = r"\b" + re.escape(keyword) + r"\b"
+
+                if re.search(pattern, text):
                     score += 1
 
 

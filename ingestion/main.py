@@ -1,5 +1,5 @@
 from clients.newsapi_client import NewsAPIClient
-from normalizers.article_normalizer import normalize_newsapi_article
+from normalizers.newsapi_normalizer import normalize_newsapi_article
 from scrapers.hackernews_scraper import scrape_hacker_news
 
 def main():

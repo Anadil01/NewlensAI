@@ -42,21 +42,4 @@ worker.on("failed", (job, error) => {
   console.error(`Job ${job.id} failed`, error.message);
 });
 
-
-process.on(
-  "SIGTERM",
-  async()=>{
-  
-   console.log(
-   "Closing worker..."
-   );
-  
-  
-   await worker.close();
-  
-  
-   process.exit(0);
-  
-  });
-
 module.exports = worker;

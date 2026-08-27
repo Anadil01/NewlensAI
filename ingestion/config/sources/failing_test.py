@@ -13,7 +13,9 @@ failing_source = {
 
     "type": "TEST",
 
-    "enabled": True,
+    # Disabled: this source always raises on purpose. It is a test
+    # fixture and must not run in the real source registry.
+    "enabled": False,
 
     "scraper": failing_scraper
 }

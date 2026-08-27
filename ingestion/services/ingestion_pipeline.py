@@ -25,79 +25,50 @@ def run_ingestion_pipeline(limit=10):
     print("NewsLens Pipeline Started")
     print("==============================")
 
-    # -----------------------------
-    # Step 1: Content Extraction
-    # -----------------------------
+    results = {
+        "extraction": [],
+        "summaries": [],
+        "topics": [],
+        "clusters": [],
+        "bias": [],
+        "errors": {},
+    }
 
-    print("\n[1] Content Extraction")
+    # Each stage runs independently. A failure in one stage (e.g. the AI
+    # provider is unreachable) must not abort the remaining stages, so we
+    # isolate each one and record the error instead of letting it propagate.
+    steps = [
+        ("extraction", "[1] Content Extraction", extract_content_for_stories),
+        ("summaries", "[2] Summarization", summarize_stories),
+        ("topics", "[3] Topic Classification", classify_stories),
+        ("clusters", "[4] Story Clustering", cluster_stories),
+        ("bias", "[5] Bias Detection", analyze_story_bias),
+    ]
 
-    extraction_results = extract_content_for_stories(
-        limit
-    )
+    for key, label, step_fn in steps:
 
-    for result in extraction_results:
-        print(result)
+        print(f"\n{label}")
 
-    # -----------------------------
-    # Step 2: Summarization
-    # -----------------------------
+        try:
 
-    print("\n[2] Summarization")
+            step_results = step_fn(limit)
 
-    summary_results = summarize_stories(
-        limit
-    )
+            results[key] = step_results
 
-    for result in summary_results:
-        print(result)
+            for result in step_results:
+                print(result)
 
-    # -----------------------------
-    # Step 3: Topic Classification
-    # -----------------------------
+        except Exception as error:
 
-    print("\n[3] Topic Classification")
+            results["errors"][key] = str(error)
 
-    topic_results = classify_stories(
-        limit
-    )
-
-    for result in topic_results:
-        print(result)
-
-    # -----------------------------
-    # Step 4: Story Clustering
-    # -----------------------------
-
-    print("\n[4] Story Clustering")
-
-    cluster_results = cluster_stories(
-        limit
-    )
-
-    for result in cluster_results:
-        print(result)
-
-    # -----------------------------
-    # Step 5: Bias Detection
-    # -----------------------------
-
-    print("\n[5] Bias Detection")
-
-    bias_results = analyze_story_bias(
-        limit
-    )
-
-    for result in bias_results:
-        print(result)
+            print(f"Step failed ({key}): {error}")
 
     print("\n==============================")
     print("NewsLens Pipeline Completed")
     print("==============================")
 
-    return {
-        "extraction": extraction_results,
-        "summaries": summary_results,
-        "topics": topic_results,
-        "clusters": cluster_results,
-        "bias": bias_results
-    }
+    if results["errors"]:
+        print(f"Completed with errors: {results['errors']}")
+
+    return results

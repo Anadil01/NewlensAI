@@ -67,14 +67,34 @@ def scrape_hacker_news():
                     score_element.text.split()[0]
                 )
 
-        # HN timestamps are Unix timestamps in UTC.
+        # HN puts the timestamp on the ".age" element of the
+        # subtext row, as a title attribute of the form
+        # "2025-01-15T12:34:56 1736944496" (ISO + unix epoch).
         published_at = None
 
-        if item.get("time"):
-            published_at = datetime.fromtimestamp(
-                item["time"],
-                tz=timezone.utc
-            )
+        if subtext:
+
+            age_element = subtext.select_one(".age")
+
+            if age_element and age_element.get("title"):
+
+                title_attr = age_element["title"]
+                parts = title_attr.split()
+
+                try:
+
+                    if len(parts) == 2:
+                        published_at = datetime.fromtimestamp(
+                            int(parts[1]),
+                            tz=timezone.utc,
+                        )
+                    else:
+                        published_at = datetime.fromisoformat(
+                            parts[0]
+                        ).replace(tzinfo=timezone.utc)
+
+                except (ValueError, OSError):
+                    published_at = None
 
         stories.append(
             normalize_hackernews_article({

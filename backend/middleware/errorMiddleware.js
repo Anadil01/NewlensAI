@@ -5,12 +5,21 @@ const config = require("../config/env");
 const errorHandler = (err, req, res, next) => {
   console.error(err);
 
-  // Duplicate MongoDB key
-  if (err.code === 11000) {
+  // Prisma: unique constraint violation
+  if (err.code === "P2002") {
     return ApiResponse.error(
       res,
       "A record with this value already exists",
       409
+    );
+  }
+
+  // Prisma: record not found
+  if (err.code === "P2025") {
+    return ApiResponse.error(
+      res,
+      "Resource not found",
+      404
     );
   }
 

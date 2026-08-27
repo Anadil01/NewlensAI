@@ -1,8 +1,6 @@
 from datetime import datetime, timezone
 import uuid
 
-from psycopg2.extras import Json
-
 from persistence.database import get_connection
 
 
@@ -11,7 +9,6 @@ def save_summary(
     summary,
     model,
     version,
-    entities=None
 ):
     """
     Save an AI-generated summary.
@@ -47,7 +44,7 @@ def save_summary(
 
         cursor = connection.cursor()
 
-        # Check whether this exact summary already exists
+        # Check whether this exact summary already exists.
         cursor.execute(
             """
             SELECT id
@@ -59,8 +56,8 @@ def save_summary(
             (
                 story_id,
                 model,
-                version
-            )
+                version,
+            ),
         )
 
         existing = cursor.fetchone()
@@ -73,15 +70,13 @@ def save_summary(
                 """
                 UPDATE ai_summaries
                 SET
-                    summary = %s,
-                    entities = %s
+                    summary = %s
                 WHERE id = %s
                 """,
                 (
                     summary,
-                    Json(entities or []),
-                    summary_id
-                )
+                    summary_id,
+                ),
             )
 
             action = "updated"
@@ -100,11 +95,10 @@ def save_summary(
                     summary,
                     model,
                     version,
-                    entities,
                     created_at
                 )
                 VALUES (
-                    %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s
                 )
                 """,
                 (
@@ -113,9 +107,8 @@ def save_summary(
                     summary,
                     model,
                     version,
-                    Json(entities or []),
-                    datetime.now(timezone.utc)
-                )
+                    datetime.now(timezone.utc),
+                ),
             )
 
             action = "inserted"
@@ -124,7 +117,7 @@ def save_summary(
 
         return {
             "action": action,
-            "summary_id": str(summary_id)
+            "summary_id": str(summary_id),
         }
 
     except Exception:
@@ -141,7 +134,7 @@ def save_summary(
 def get_summary_for_story(
     story_id,
     model,
-    version
+    version,
 ):
     """
     Return the cached summary for a story,
@@ -179,7 +172,6 @@ def get_summary_for_story(
                 summary,
                 model,
                 version,
-                entities,
                 created_at
             FROM ai_summaries
             WHERE story_id = %s
@@ -191,7 +183,7 @@ def get_summary_for_story(
             (
                 story_id,
                 model,
-                version
+                version,
             ),
         )
 
@@ -206,8 +198,7 @@ def get_summary_for_story(
             "summary": row[2],
             "model": row[3],
             "version": row[4],
-            "entities": row[5] or [],
-            "created_at": row[6],
+            "created_at": row[5],
         }
 
     finally:

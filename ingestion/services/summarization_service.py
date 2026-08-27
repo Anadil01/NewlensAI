@@ -32,7 +32,11 @@ AI_MODEL = os.getenv(
 AI_VERSION = "v1"
 
 
-def get_stories_needing_summary(limit=10):
+def get_stories_needing_summary(
+    limit=10,
+    model=None,
+    version=None,
+):
     connection = get_connection()
 
     try:
@@ -52,11 +56,17 @@ def get_stories_needing_summary(limit=10):
                   SELECT 1
                   FROM ai_summaries a
                   WHERE a.story_id = s.id
+                    AND a.model = %s
+                    AND a.version = %s
               )
             ORDER BY s.created_at ASC
             LIMIT %s
             """,
-            (limit,),
+            (
+                model,
+                version,
+                limit,
+            ),
         )
 
         rows = cursor.fetchall()
@@ -170,7 +180,7 @@ def validate_ai_result(result):
 
     if not isinstance(
         result,
-        dict
+        dict,
     ):
 
         raise ValueError(
@@ -183,7 +193,7 @@ def validate_ai_result(result):
 
     if not isinstance(
         summary,
-        str
+        str,
     ):
 
         raise ValueError(
@@ -205,7 +215,7 @@ def validate_ai_result(result):
 
     if not isinstance(
         key_points,
-        list
+        list,
     ):
 
         raise ValueError(
@@ -219,7 +229,7 @@ def validate_ai_result(result):
 
     if not isinstance(
         entities,
-        list
+        list,
     ):
 
         raise ValueError(
@@ -412,7 +422,9 @@ def summarize_stories(
     else:
 
         stories = get_stories_needing_summary(
-            limit
+            limit=limit,
+            model=model,
+            version=version,
         )
 
     results = []
@@ -451,7 +463,9 @@ def summarize_stories(
         # -----------------------------------------
 
         existing_summary = get_summary_for_story(
-            story_id
+            story_id,
+            model,
+            version,
         )
 
         if existing_summary:
@@ -491,7 +505,7 @@ def summarize_stories(
                     "entities": (
                         existing_summary.get(
                             "entities",
-                            []
+                            [],
                         )
                     ),
                 }
@@ -593,7 +607,6 @@ def summarize_stories(
                 summary=ai_result["summary"],
                 model=model_used,
                 version=version,
-                entities=ai_result["entities"],
             )
 
             results.append(

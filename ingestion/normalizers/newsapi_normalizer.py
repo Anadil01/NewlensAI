@@ -5,10 +5,15 @@ def normalize_newsapi_article(article):
 
     url = article.get("url")
 
-    # Create stable unique ID
-    external_id = hashlib.md5(
-        url.encode()
-    ).hexdigest()
+    # Create stable unique ID. NewsAPI can return articles with a null
+    # url (e.g. "[Removed]" items); guard so one bad article doesn't
+    # crash normalization of the whole batch. The validator rejects
+    # articles with no external_id downstream.
+    external_id = (
+        hashlib.md5(url.encode()).hexdigest()
+        if url
+        else None
+    )
 
 
     return {

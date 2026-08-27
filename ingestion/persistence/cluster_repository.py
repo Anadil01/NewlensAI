@@ -75,6 +75,12 @@ def assign_story_to_cluster(
             )
         )
 
+        if cursor.rowcount != 1:
+            raise ValueError(
+                f"Story {story_id} was not assigned "
+                f"to cluster {cluster_id}"
+            )
+
         connection.commit()
 
     except Exception:
@@ -94,8 +100,8 @@ def create_cluster_with_stories(
     Atomically create a story cluster and assign
     all stories to it.
 
-    If any operation fails, the entire transaction
-    is rolled back.
+    If any story cannot be assigned, the entire
+    transaction is rolled back.
     """
 
     connection = get_connection()
@@ -132,6 +138,7 @@ def create_cluster_with_stories(
 
         # Assign all stories using the SAME transaction
         for story_id in story_ids:
+
             cursor.execute(
                 """
                 UPDATE stories
@@ -146,6 +153,19 @@ def create_cluster_with_stories(
                     story_id
                 )
             )
+
+            # Make sure the story was actually assigned.
+            #
+            # rowcount == 0 means:
+            # - story does not exist, OR
+            # - story already belongs to another cluster.
+            if cursor.rowcount != 1:
+
+                raise ValueError(
+                    f"Story {story_id} could not be assigned "
+                    f"to cluster {cluster_id}. "
+                    f"It may already belong to another cluster."
+                )
 
         connection.commit()
 

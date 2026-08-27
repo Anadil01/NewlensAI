@@ -9,7 +9,8 @@ const startScheduler =
 require("./jobs/scheduler");
 const config = require("./config/env");
 const securityHeaders = require("./middleware/securityMiddleware");
-const { connectRedis } = require("./utils/redis");
+const { connectRedis, redisClient } = require("./utils/redis");
+const prisma = require("./utils/prisma");
 
 const {
   connectElasticsearch
@@ -33,6 +34,7 @@ app.use(express.json({
 
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api", require("./routes/storyRoutes"));
+app.use(require("./routes/healthRoutes"));
 
 
 
@@ -51,12 +53,49 @@ const startServer = async () => {
     await connectElasticsearch();
     await createStoriesIndex();
     await recoverStaleScrapeRuns();
-    
-    app.listen(config.port, () => {
+
+    // Start the background workers in-process so queued scrape/ingestion
+    // jobs are actually consumed (previously they were defined but never
+    // started, so nothing processed the queues).
+    const scrapeWorker = require("./workers/scrapeWorker");
+    const ingestionWorker = require("./workers/ingestionWorker");
+
+    const server = app.listen(config.port, () => {
       console.log(`Server running on ${config.port}`);
     });
 
     await startScheduler();
+
+    // Centralized graceful shutdown: stop the workers, close connections,
+    // then exit. Owning shutdown here avoids races between per-worker
+    // signal handlers all calling process.exit().
+    const shutdown = async (signal) => {
+      console.log(`${signal} received, shutting down...`);
+
+      server.close();
+
+      try {
+        await scrapeWorker.close();
+        await ingestionWorker.close();
+
+        if (redisClient.isOpen) {
+          await redisClient.quit();
+        }
+
+        await prisma.$disconnect();
+      } catch (shutdownError) {
+        console.error(
+          "Error during shutdown:",
+          shutdownError.message
+        );
+      }
+
+      process.exit(0);
+    };
+
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    process.on("SIGINT", () => shutdown("SIGINT"));
+
   } catch (error) {
     console.log(
       "Server startup failed:",
