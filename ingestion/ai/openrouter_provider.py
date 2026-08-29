@@ -1,5 +1,7 @@
 import json
 import os
+
+from config.settings import OPENROUTER_API_KEY
 from typing import Any
 
 from openai import OpenAI
@@ -11,7 +13,7 @@ class OpenRouterProvider(AIProvider):
 
     def __init__(self):
 
-        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        self.api_key = OPENROUTER_API_KEY
 
         if not self.api_key:
             raise ValueError(

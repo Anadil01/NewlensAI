@@ -30,30 +30,10 @@ model Source {
   isActive   Boolean     @default(true) @map("is_active")
   createdAt  DateTime    @default(now()) @map("created_at")
   updatedAt  DateTime    @updatedAt @map("updated_at")
-  scrapeRuns ScrapeRun[]
   stories    Story[]
-
-  @@map("sources")
 }
 
-model ScrapeRun {
-  id          String          @id @default(uuid()) @db.Uuid
-  sourceId    String          @map("source_id") @db.Uuid
-  startedAt   DateTime        @default(now()) @map("started_at")
-  completedAt DateTime?       @map("completed_at")
-  durationMs  Int?            @map("duration_ms")
-  status      ScrapeRunStatus @default(RUNNING)
-  fetched     Int             @default(0)
-  inserted    Int             @default(0)
-  updated     Int             @default(0)
-  skipped     Int             @default(0)
-  error       String?
-  source      Source          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
-  @@index([sourceId, startedAt(sort: Desc)])
-  @@index([status])
-  @@map("scrape_runs")
-}
 
 model Story {
   id             String           @id @default(uuid()) @db.Uuid
@@ -165,6 +145,7 @@ model AISummary {
   model     String
   version   String
   createdAt DateTime @default(now()) @map("created_at")
+  entities  Json?
   story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
 
   @@unique([storyId, model, version])
@@ -195,11 +176,7 @@ enum SourceType {
   API
 }
 
-enum ScrapeRunStatus {
-  RUNNING
-  SUCCESS
-  FAILED
-}
+
 
 enum ContentStatus {
   FULL

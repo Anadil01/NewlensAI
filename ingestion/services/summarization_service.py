@@ -607,6 +607,7 @@ def summarize_stories(
                 summary=ai_result["summary"],
                 model=model_used,
                 version=version,
+                entities=ai_result["entities"],
             )
 
             results.append(
@@ -671,3 +672,4 @@ def summarize_stories(
             )
 
     return results
+

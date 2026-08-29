@@ -1,12 +1,7 @@
 const express = require("express");
 const cors = require("cors");
-const {
-  recoverStaleScrapeRuns
-} = require("./services/scrapeRunService");
 
 
-const startScheduler =
-require("./jobs/scheduler");
 const config = require("./config/env");
 const securityHeaders = require("./middleware/securityMiddleware");
 const { connectRedis, redisClient } = require("./utils/redis");
@@ -48,34 +43,23 @@ app.use(errorHandler);
 
 const startServer = async () => {
   try {
-
     await connectRedis();
     await connectElasticsearch();
     await createStoriesIndex();
-    await recoverStaleScrapeRuns();
 
-    // Start the background workers in-process so queued scrape/ingestion
-    // jobs are actually consumed (previously they were defined but never
-    // started, so nothing processed the queues).
-    const scrapeWorker = require("./workers/scrapeWorker");
+    // Start the ingestion worker.
     const ingestionWorker = require("./workers/ingestionWorker");
 
     const server = app.listen(config.port, () => {
       console.log(`Server running on ${config.port}`);
     });
 
-    await startScheduler();
-
-    // Centralized graceful shutdown: stop the workers, close connections,
-    // then exit. Owning shutdown here avoids races between per-worker
-    // signal handlers all calling process.exit().
     const shutdown = async (signal) => {
       console.log(`${signal} received, shutting down...`);
 
       server.close();
 
       try {
-        await scrapeWorker.close();
         await ingestionWorker.close();
 
         if (redisClient.isOpen) {

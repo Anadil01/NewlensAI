@@ -1,5 +1,8 @@
+
 from datetime import datetime, timezone
 import uuid
+
+from psycopg2.extras import Json
 
 from persistence.database import get_connection
 
@@ -9,6 +12,7 @@ def save_summary(
     summary,
     model,
     version,
+    entities=None,
 ):
     """
     Save an AI-generated summary.
@@ -16,7 +20,13 @@ def save_summary(
     A story can have multiple summaries,
     but the same story/model/version combination
     must remain unique.
+
+    Entities are stored as JSON.
     """
+
+    # ---------------------------------------------
+    # Validation
+    # ---------------------------------------------
 
     if not story_id:
         raise ValueError(
@@ -38,13 +48,38 @@ def save_summary(
             "version cannot be empty"
         )
 
+    # ---------------------------------------------
+    # Normalize entities
+    # ---------------------------------------------
+
+    if entities is None:
+        entities = []
+
+    if not isinstance(entities, list):
+        raise ValueError(
+            "entities must be a list"
+        )
+
+    entities = [
+        str(entity).strip()
+        for entity in entities
+        if str(entity).strip()
+    ][:8]
+
+    # ---------------------------------------------
+    # Database connection
+    # ---------------------------------------------
+
     connection = get_connection()
 
     try:
 
         cursor = connection.cursor()
 
-        # Check whether this exact summary already exists.
+        # -----------------------------------------
+        # Check whether this exact summary exists
+        # -----------------------------------------
+
         cursor.execute(
             """
             SELECT id
@@ -62,6 +97,10 @@ def save_summary(
 
         existing = cursor.fetchone()
 
+        # -----------------------------------------
+        # UPDATE existing summary
+        # -----------------------------------------
+
         if existing:
 
             summary_id = existing[0]
@@ -70,16 +109,22 @@ def save_summary(
                 """
                 UPDATE ai_summaries
                 SET
-                    summary = %s
+                    summary = %s,
+                    entities = %s
                 WHERE id = %s
                 """,
                 (
                     summary,
+                    Json(entities),
                     summary_id,
                 ),
             )
 
             action = "updated"
+
+        # -----------------------------------------
+        # INSERT new summary
+        # -----------------------------------------
 
         else:
 
@@ -95,10 +140,11 @@ def save_summary(
                     summary,
                     model,
                     version,
+                    entities,
                     created_at
                 )
                 VALUES (
-                    %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s
                 )
                 """,
                 (
@@ -107,11 +153,16 @@ def save_summary(
                     summary,
                     model,
                     version,
+                    Json(entities),
                     datetime.now(timezone.utc),
                 ),
             )
 
             action = "inserted"
+
+        # -----------------------------------------
+        # Commit
+        # -----------------------------------------
 
         connection.commit()
 
@@ -143,6 +194,10 @@ def get_summary_for_story(
     Returns None if no matching summary exists.
     """
 
+    # ---------------------------------------------
+    # Validation
+    # ---------------------------------------------
+
     if not story_id:
         raise ValueError(
             "story_id cannot be empty"
@@ -158,6 +213,10 @@ def get_summary_for_story(
             "version cannot be empty"
         )
 
+    # ---------------------------------------------
+    # Database connection
+    # ---------------------------------------------
+
     connection = get_connection()
 
     try:
@@ -172,6 +231,7 @@ def get_summary_for_story(
                 summary,
                 model,
                 version,
+                entities,
                 created_at
             FROM ai_summaries
             WHERE story_id = %s
@@ -198,7 +258,8 @@ def get_summary_for_story(
             "summary": row[2],
             "model": row[3],
             "version": row[4],
-            "created_at": row[5],
+            "entities": row[5] or [],
+            "created_at": row[6],
         }
 
     finally:

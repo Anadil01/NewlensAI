@@ -10,7 +10,7 @@ import numpy as np
 from clustering.embedding_model import generate_embeddings
 
 
-SIMILARITY_THRESHOLD = 0.78
+SIMILARITY_THRESHOLD = 0.65
 TITLE_WEIGHT = 0.25
 SEMANTIC_WEIGHT = 0.60
 ENTITY_WEIGHT = 0.15
@@ -86,7 +86,15 @@ class StoryClusterer:
                     embeddings[j],
                 )
 
+                print(
+                    f"COMPARE: "
+                    f"{stories[i]['title'][:35]} <-> "
+                    f"{stories[j]['title'][:35]} "
+                    f"| SCORE={score:.3f}"
+                )
+
                 if score >= self.threshold:
+                    print(f"  ✅ MATCH: {score:.3f} >= {self.threshold}")
                     union(i, j)
 
         groups: dict[

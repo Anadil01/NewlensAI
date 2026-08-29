@@ -1,11 +1,10 @@
 const express = require("express");
 
 const validate = require("../middleware/validateMiddleware");
-const requireAdmin = require("../middleware/adminMiddleware");
 
 const {
   storyIdParamsSchema,
-  storyQuerySchema
+  storyQuerySchema,
 } = require("../validations/storyValidation");
 
 const {
@@ -13,20 +12,27 @@ const {
   getSingleStory,
   toggleBookmark,
   getBookmarks,
-  triggerScrape,
+  triggerIngestion,
+  searchStories,
 } = require("../controllers/storyController");
 
-
+const requireAdmin = require("../middleware/adminMiddleware");
 const protect = require("../middleware/authMiddleware");
 
 const router = express.Router();
-const storyController = require("../controllers/storyController");
 
+router.post(
+  "/admin/ingestion/run",
+  protect,
+  requireAdmin,
+  triggerIngestion
+);
 
 router.get(
   "/stories/search",
-  storyController.searchStories
+  searchStories
 );
+
 router.get(
   "/stories",
   validate(storyQuerySchema, "query"),
@@ -37,13 +43,6 @@ router.get(
   "/stories/:id",
   validate(storyIdParamsSchema, "params"),
   getSingleStory
-);
-
-router.post(
-  "/scrape",
-  protect,
-  requireAdmin,
-  triggerScrape
 );
 
 router.post(
@@ -58,4 +57,5 @@ router.get(
   protect,
   getBookmarks
 );
+
 module.exports = router;
