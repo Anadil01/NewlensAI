@@ -35,4 +35,13 @@ const readingActivitySchema = z.object({
   completed: z.boolean().default(false)
 });
 
-module.exports = { personalizedFeedQuerySchema, preferencesSchema, readingActivitySchema };
+const topicIdParamsSchema = z.object({
+  topicId: z.uuid("Invalid topic ID")
+});
+
+module.exports = {
+  personalizedFeedQuerySchema,
+  preferencesSchema,
+  readingActivitySchema,
+  topicIdParamsSchema
+};

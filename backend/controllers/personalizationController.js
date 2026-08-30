@@ -38,3 +38,31 @@ exports.recordReading = asyncHandler(async (req, res) => {
   });
   return ApiResponse.success(res, result, "Reading activity recorded", 201);
 });
+
+
+exports.followTopic = asyncHandler(async (req, res) => {
+  const preference = await personalizationService.followTopic({
+    userId: req.user,
+    topicId: req.params.topicId
+  });
+
+  return ApiResponse.success(
+    res,
+    { preference },
+    "Topic followed successfully",
+    201
+  );
+});
+
+exports.unfollowTopic = asyncHandler(async (req, res) => {
+  const result = await personalizationService.unfollowTopic({
+    userId: req.user,
+    topicId: req.params.topicId
+  });
+
+  return ApiResponse.success(
+    res,
+    result,
+    "Topic unfollowed successfully"
+  );
+});
