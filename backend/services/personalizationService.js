@@ -143,10 +143,66 @@ const recordReading = async ({ userId, storyId, durationSeconds, completed }) =>
   return { recorded: true, affinityDelta, topicCount: story.storyTopics.length };
 };
 
+const followTopic = async ({ userId, topicId }) => {
+  const topic = await prisma.topic.findUnique({
+    where: { id: topicId }
+  });
+
+  if (!topic) {
+    throw new AppError("Topic not found", 404);
+  }
+
+  const preference = await prisma.userPreference.upsert({
+    where: {
+      userId_topicId: {
+        userId,
+        topicId
+      }
+    },
+    create: {
+      userId,
+      topicId,
+      preference: 5
+    },
+    update: {
+      preference: 5
+    },
+    include: {
+      topic: true
+    }
+  });
+
+  return preference;
+};
+
+const unfollowTopic = async ({ userId, topicId }) => {
+  const topic = await prisma.topic.findUnique({
+    where: { id: topicId }
+  });
+
+  if (!topic) {
+    throw new AppError("Topic not found", 404);
+  }
+
+  await prisma.userPreference.deleteMany({
+    where: {
+      userId,
+      topicId
+    }
+  });
+
+  return {
+    unfollowed: true,
+    topicId
+  };
+};
+
 module.exports = {
   getTopics,
   getPreferences,
   replacePreferences,
   getPersonalizedFeed,
-  recordReading
+  recordReading,
+  followTopic,
+  unfollowTopic
 };
