@@ -39,9 +39,14 @@ const topicIdParamsSchema = z.object({
   topicId: z.uuid("Invalid topic ID")
 });
 
+const feedbackSchema = z.object({
+  feedback: z.enum(["LIKE", "DISLIKE"])
+});
+
 module.exports = {
   personalizedFeedQuerySchema,
   preferencesSchema,
   readingActivitySchema,
-  topicIdParamsSchema
+  topicIdParamsSchema,
+  feedbackSchema
 };

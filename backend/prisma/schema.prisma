@@ -16,7 +16,9 @@ model User {
   role           UserRole         @default(USER)
   bookmarks      Bookmark[]
   readingHistory ReadingHistory[]
-  preferences    UserPreference[]
+  preferences      UserPreference[]
+  sourcePreferences UserSourcePreference[]
+  feedback StoryFeedback[]
 
   @@map("users")
 }
@@ -40,6 +42,7 @@ model Story {
   biasAnalysis   BiasAnalysis?
   bookmarks      Bookmark[]
   readingHistory ReadingHistory[]
+  feedback       StoryFeedback[]
   cluster        StoryCluster?    @relation(fields: [clusterId], references: [id])
   source         sources          @relation(fields: [sourceId], references: [id])
   storyTopics    StoryTopic[]
@@ -75,6 +78,27 @@ model ReadingHistory {
 
   @@index([userId, openedAt(sort: Desc)])
   @@map("reading_history")
+}
+
+model StoryFeedback {
+  id        String       @id @default(uuid()) @db.Uuid
+  userId    String       @map("user_id") @db.Uuid
+  storyId   String       @map("story_id") @db.Uuid
+  feedback  FeedbackType
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storyId])
+  @@index([userId, feedback])
+  @@map("story_feedback")
+}
+
+enum FeedbackType {
+  LIKE
+  DISLIKE
 }
 
 model Topic {
@@ -122,6 +146,22 @@ model UserPreference {
 
   @@unique([userId, topicId])
   @@map("user_preferences")
+}
+
+model UserSourcePreference {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  sourceId   String   @map("source_id") @db.Uuid
+  preference Int
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source sources @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceId])
+  @@index([sourceId])
+  @@map("user_source_preferences")
 }
 
 model AISummary {
@@ -182,10 +222,12 @@ model sources {
   reliabilityScore Float?              @map("reliability_score")
 
   scrape_runs scrape_runs[]
-  stories     Story[]
+  stories          Story[]
+  userPreferences  UserSourcePreference[]
 
   @@map("sources")
 }
+
 
 enum SourcePoliticalLean {
   LEFT

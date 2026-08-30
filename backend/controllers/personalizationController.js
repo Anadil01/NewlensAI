@@ -66,3 +66,44 @@ exports.unfollowTopic = asyncHandler(async (req, res) => {
     "Topic unfollowed successfully"
   );
 });
+
+
+exports.setStoryFeedback = asyncHandler(async (req, res) => {
+  const result = await personalizationService.setStoryFeedback({
+    userId: req.user,
+    storyId: req.params.id,
+    feedback: req.body.feedback
+  });
+
+  return ApiResponse.success(
+    res,
+    result,
+    "Story feedback saved successfully"
+  );
+});
+
+exports.getStoryFeedback = asyncHandler(async (req, res) => {
+  const result = await personalizationService.getStoryFeedback({
+    userId: req.user,
+    storyId: req.params.id
+  });
+
+  return ApiResponse.success(
+    res,
+    { feedback: result },
+    "Story feedback fetched successfully"
+  );
+});
+
+exports.removeStoryFeedback = asyncHandler(async (req, res) => {
+  const result = await personalizationService.removeStoryFeedback({
+    userId: req.user,
+    storyId: req.params.id
+  });
+
+  return ApiResponse.success(
+    res,
+    result,
+    "Story feedback removed successfully"
+  );
+});

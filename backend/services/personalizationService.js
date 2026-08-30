@@ -197,6 +197,236 @@ const unfollowTopic = async ({ userId, topicId }) => {
   };
 };
 
+const setStoryFeedback = async ({
+  userId,
+  storyId,
+  feedback
+}) => {
+  const story = await prisma.story.findUnique({
+    where: { id: storyId },
+    include: {
+      storyTopics: {
+        select: {
+          topicId: true
+        }
+      }
+    }
+  });
+
+  if (!story) {
+    throw new AppError("Story not found", 404);
+  }
+
+  const existingFeedback = await prisma.storyFeedback.findUnique({
+    where: {
+      userId_storyId: {
+        userId,
+        storyId
+      }
+    }
+  });
+
+  // Convert feedback into its recommendation signal.
+  const signal = feedback === "LIKE" ? 1 : -1;
+  const previousSignal = existingFeedback
+    ? (existingFeedback.feedback === "LIKE" ? 1 : -1)
+    : 0;
+
+  // If the user submits the same feedback again,
+  // don't change their preferences.
+  const preferenceDelta = signal - previousSignal;
+
+  await prisma.$transaction(async (transaction) => {
+    await transaction.storyFeedback.upsert({
+      where: {
+        userId_storyId: {
+          userId,
+          storyId
+        }
+      },
+      create: {
+        userId,
+        storyId,
+        feedback
+      },
+      update: {
+        feedback
+      }
+    });
+
+    if (preferenceDelta === 0) {
+      return;
+    }
+
+    for (const { topicId } of story.storyTopics) {
+      const current = await transaction.userPreference.findUnique({
+        where: {
+          userId_topicId: {
+            userId,
+            topicId
+          }
+        }
+      });
+
+      const currentPreference = current?.preference || 0;
+
+      const preference = Math.max(
+        -5,
+        Math.min(
+          5,
+          currentPreference + preferenceDelta
+        )
+      );
+
+      await transaction.userPreference.upsert({
+        where: {
+          userId_topicId: {
+            userId,
+            topicId
+          }
+        },
+        create: {
+          userId,
+          topicId,
+          preference
+        },
+        update: {
+          preference
+        }
+      });
+    }
+  });
+
+  return {
+    storyId,
+    feedback,
+    previousFeedback: existingFeedback?.feedback || null,
+    preferenceDelta,
+    topicCount: story.storyTopics.length
+  };
+};
+
+const getStoryFeedback = async ({
+  userId,
+  storyId
+}) => {
+  const story = await prisma.story.findUnique({
+    where: { id: storyId },
+    select: { id: true }
+  });
+
+  if (!story) {
+    throw new AppError("Story not found", 404);
+  }
+
+  const feedback = await prisma.storyFeedback.findUnique({
+    where: {
+      userId_storyId: {
+        userId,
+        storyId
+      }
+    }
+  });
+
+  return feedback;
+};
+
+const removeStoryFeedback = async ({
+  userId,
+  storyId
+}) => {
+  const existingFeedback = await prisma.storyFeedback.findUnique({
+    where: {
+      userId_storyId: {
+        userId,
+        storyId
+      }
+    }
+  });
+
+  if (!existingFeedback) {
+    return {
+      removed: false,
+      storyId,
+      preferenceDelta: 0
+    };
+  }
+
+  const story = await prisma.story.findUnique({
+    where: { id: storyId },
+    include: {
+      storyTopics: {
+        select: {
+          topicId: true
+        }
+      }
+    }
+  });
+
+  if (!story) {
+    throw new AppError("Story not found", 404);
+  }
+
+  // Removing LIKE removes +1.
+  // Removing DISLIKE removes -1, therefore +1.
+  const preferenceDelta =
+    existingFeedback.feedback === "LIKE" ? -1 : 1;
+
+  await prisma.$transaction(async (transaction) => {
+    await transaction.storyFeedback.delete({
+      where: {
+        userId_storyId: {
+          userId,
+          storyId
+        }
+      }
+    });
+
+    for (const { topicId } of story.storyTopics) {
+      const current = await transaction.userPreference.findUnique({
+        where: {
+          userId_topicId: {
+            userId,
+            topicId
+          }
+        }
+      });
+
+      if (!current) {
+        continue;
+      }
+
+      const preference = Math.max(
+        -5,
+        Math.min(
+          5,
+          current.preference + preferenceDelta
+        )
+      );
+
+      await transaction.userPreference.update({
+        where: {
+          userId_topicId: {
+            userId,
+            topicId
+          }
+        },
+        data: {
+          preference
+        }
+      });
+    }
+  });
+
+  return {
+    removed: true,
+    storyId,
+    previousFeedback: existingFeedback.feedback,
+    preferenceDelta,
+    topicCount: story.storyTopics.length
+  };
+};
+
 module.exports = {
   getTopics,
   getPreferences,
@@ -204,5 +434,8 @@ module.exports = {
   getPersonalizedFeed,
   recordReading,
   followTopic,
-  unfollowTopic
+  unfollowTopic,
+  setStoryFeedback,
+  getStoryFeedback,
+  removeStoryFeedback
 };

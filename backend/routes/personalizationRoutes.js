@@ -1,7 +1,7 @@
 const express = require("express");
 const protect = require("../middleware/authMiddleware");
 const validate = require("../middleware/validateMiddleware");
-const { personalizedFeedQuerySchema, preferencesSchema, readingActivitySchema , topicIdParamsSchema} = require("../validations/personalizationValidation");
+const { personalizedFeedQuerySchema, preferencesSchema, readingActivitySchema , topicIdParamsSchema, feedbackSchema} = require("../validations/personalizationValidation");
 const { storyIdParamsSchema } = require("../validations/storyValidation");
 const controller = require("../controllers/personalizationController");
 
@@ -24,4 +24,23 @@ router.post(
     controller.unfollowTopic
   );
 
+
+  router.post(
+    "/stories/:id/feedback",
+    validate(storyIdParamsSchema, "params"),
+    validate(feedbackSchema),
+    controller.setStoryFeedback
+  );
+  
+  router.get(
+    "/stories/:id/feedback",
+    validate(storyIdParamsSchema, "params"),
+    controller.getStoryFeedback
+  );
+  
+  router.delete(
+    "/stories/:id/feedback",
+    validate(storyIdParamsSchema, "params"),
+    controller.removeStoryFeedback
+  );
 module.exports = router;
