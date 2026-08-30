@@ -6,18 +6,28 @@ const personalizedFeedQuerySchema = z.object({
 });
 
 const preferencesSchema = z.object({
-  preferences: z.array(z.object({
-    topicId: z.uuid("Invalid topic ID"),
-    preference: z.number().int().min(-5).max(5)
-  })).min(1).max(20).superRefine((preferences, context) => {
-    const topicIds = new Set();
-    for (const [index, preference] of preferences.entries()) {
+  preferences: z.array(
+      z.object({
+          topicId: z.uuid("Invalid topic ID"),
+          preference: z.number().int().min(-5).max(5)
+      })
+  )
+  .min(1)
+  .max(20)
+}).superRefine((data, context) => {
+  const topicIds = new Set();
+
+  for (const [index, preference] of data.preferences.entries()) {
       if (topicIds.has(preference.topicId)) {
-        context.addIssue({ code: "custom", path: [index, "topicId"], message: "Topic IDs must be unique" });
+          context.addIssue({
+              code: "custom",
+              path: ["preferences", index, "topicId"],
+              message: "Topic IDs must be unique"
+          });
       }
+
       topicIds.add(preference.topicId);
-    }
-  })
+  }
 });
 
 const readingActivitySchema = z.object({

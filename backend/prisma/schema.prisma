@@ -21,22 +21,6 @@ model User {
   @@map("users")
 }
 
-model Source {
-  id               String              @id @default(uuid()) @db.Uuid
-  name             String
-  slug             String              @unique
-  websiteUrl       String              @map("website_url")
-  type             SourceType
-  politicalLean    SourcePoliticalLean @default(UNKNOWN) @map("political_lean")
-  reliabilityScore Float?              @map("reliability_score")
-  isActive         Boolean             @default(true) @map("is_active")
-  createdAt        DateTime            @default(now()) @map("created_at")
-  updatedAt        DateTime            @updatedAt @map("updated_at")
-  stories          Story[]
-}
-
-
-
 model Story {
   id             String           @id @default(uuid()) @db.Uuid
   sourceId       String           @map("source_id") @db.Uuid
@@ -57,13 +41,12 @@ model Story {
   bookmarks      Bookmark[]
   readingHistory ReadingHistory[]
   cluster        StoryCluster?    @relation(fields: [clusterId], references: [id])
-  source         Source           @relation(fields: [sourceId], references: [id])
+  source         sources          @relation(fields: [sourceId], references: [id])
   storyTopics    StoryTopic[]
 
   @@unique([sourceId, externalId])
   @@index([sourceId, publishedAt(sort: Desc)])
   @@index([publishedAt(sort: Desc)])
-  @@index([points(sort: Desc), id])
   @@index([clusterId])
   @@map("stories")
 }
@@ -168,15 +151,40 @@ model BiasAnalysis {
   @@map("bias_analysis")
 }
 
-enum UserRole {
-  USER
-  ADMIN
+model scrape_runs {
+  id           String          @id @db.Uuid
+  source_id    String          @db.Uuid
+  started_at   DateTime        @default(now())
+  completed_at DateTime?
+  duration_ms  Int?
+  status       ScrapeRunStatus @default(RUNNING)
+  fetched      Int             @default(0)
+  inserted     Int             @default(0)
+  updated      Int             @default(0)
+  skipped      Int             @default(0)
+  error        String?
+  sources      sources         @relation(fields: [source_id], references: [id], onDelete: Cascade)
+
+  @@index([source_id, started_at(sort: Desc)])
+  @@index([status])
 }
 
-enum SourceType {
-  WEBSITE
-  RSS
-  API
+model sources {
+  id               String              @id @db.Uuid
+  name             String
+  slug             String              @unique
+  websiteUrl       String              @map("website_url")
+  type             SourceType
+  isActive         Boolean             @default(true) @map("is_active")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @map("updated_at")
+  politicalLean    SourcePoliticalLean @default(UNKNOWN) @map("political_lean")
+  reliabilityScore Float?              @map("reliability_score")
+
+  scrape_runs scrape_runs[]
+  stories     Story[]
+
+  @@map("sources")
 }
 
 enum SourcePoliticalLean {
@@ -188,10 +196,25 @@ enum SourcePoliticalLean {
   UNKNOWN
 }
 
+enum UserRole {
+  USER
+  ADMIN
+}
 
+enum SourceType {
+  WEBSITE
+  RSS
+  API
+}
 
 enum ContentStatus {
   FULL
   SUMMARY_ONLY
   EXTERNAL_ONLY
+}
+
+enum ScrapeRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
 }
