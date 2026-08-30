@@ -2,8 +2,6 @@
 from datetime import datetime, timezone
 import uuid
 
-from psycopg2.extras import Json
-
 from persistence.database import get_connection
 
 
@@ -23,6 +21,7 @@ def save_summary(
 
     Entities are stored as JSON.
     """
+    from psycopg2.extras import Json
 
     # ---------------------------------------------
     # Validation

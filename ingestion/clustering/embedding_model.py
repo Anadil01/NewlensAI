@@ -1,7 +1,5 @@
 from functools import lru_cache
 
-from sentence_transformers import SentenceTransformer
-
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 
@@ -13,6 +11,10 @@ def get_embedding_model():
 
     The cached model is reused for every clustering job.
     """
+    # Import lazily: clustering is optional for other ingestion stages, and
+    # loading its ML dependency should not delay their startup.
+    from sentence_transformers import SentenceTransformer
+
     return SentenceTransformer(MODEL_NAME)
 
 

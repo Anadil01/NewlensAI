@@ -5,6 +5,7 @@ const validate = require("../middleware/validateMiddleware");
 const {
   storyIdParamsSchema,
   storyQuerySchema,
+  searchQuerySchema,
 } = require("../validations/storyValidation");
 
 const {
@@ -30,6 +31,7 @@ router.post(
 
 router.get(
   "/stories/search",
+  validate(searchQuerySchema, "query"),
   searchStories
 );
 

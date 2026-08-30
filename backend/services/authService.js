@@ -12,7 +12,10 @@ const generateToken = (id) => {
     },
     config.jwtSecret,
     {
-      expiresIn: "7d"
+      algorithm: "HS256",
+      expiresIn: config.jwtExpiresIn,
+      issuer: config.jwtIssuer,
+      audience: config.jwtAudience
     }
   );
 };
@@ -39,7 +42,7 @@ const registerUser = async ({
 
   const hashedPassword = await bcrypt.hash(
     password,
-    10
+    config.bcryptRounds
   );
 
   const user = await prisma.user.create({

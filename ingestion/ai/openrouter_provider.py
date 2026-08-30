@@ -4,8 +4,6 @@ import os
 from config.settings import OPENROUTER_API_KEY
 from typing import Any
 
-from openai import OpenAI
-
 from .provider import AIProvider
 
 
@@ -29,6 +27,10 @@ class OpenRouterProvider(AIProvider):
             "AI_MODEL",
             "nvidia/nemotron-3-super-120b-a12b:free",
         )
+
+        # Import only when the AI provider is instantiated. This keeps other
+        # ingestion stages usable in environments that do not need OpenAI.
+        from openai import OpenAI
 
         self.client = OpenAI(
             api_key=self.api_key,

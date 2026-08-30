@@ -1,5 +1,4 @@
 import os
-import psycopg2
 from dotenv import load_dotenv
 
 load_dotenv(
@@ -11,6 +10,11 @@ load_dotenv(
 
 
 def get_connection():
+    # Database access is only needed by persistence operations. Keeping the
+    # driver import here lets pure clustering code run in lightweight workers
+    # and tests without a PostgreSQL client installed.
+    import psycopg2
+
     database_url = os.getenv("DATABASE_URL")
 
     if not database_url:

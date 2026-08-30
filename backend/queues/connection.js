@@ -6,6 +6,14 @@ const connection = new IORedis(
   config.redisUrl,
   {
     maxRetriesPerRequest: null,
+    connectTimeout: 5000,
+    retryStrategy: (retries) => {
+      if (retries > 10) {
+        return null;
+      }
+
+      return Math.min(retries * 100, 1000);
+    }
   }
 );
 

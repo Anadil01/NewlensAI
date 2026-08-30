@@ -10,20 +10,41 @@ const {
 const buildStoriesCacheKey = ({
   page,
   limit,
-  search
+  search,
+  cursor
 }) => {
-  return `stories:page:${page}:limit:${limit}:search:${search}`;
+  return `stories:page:${page}:limit:${limit}:search:${search}:cursor:${cursor || "first"}`;
+};
+
+const encodeCursor = (story) => Buffer.from(JSON.stringify({
+  points: story.points,
+  id: story.id
+})).toString("base64url");
+
+const decodeCursor = (cursor) => {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (typeof parsed.id !== "string" ||
+      (parsed.points !== null && !Number.isInteger(parsed.points))) {
+      throw new Error("Invalid cursor");
+    }
+    return parsed;
+  } catch {
+    throw new AppError("Invalid pagination cursor", 400);
+  }
 };
 
 const getStories = async ({
   page = 1,
   limit = 6,
-  search = ""
+  search = "",
+  cursor
 }) => {
   const cacheKey = buildStoriesCacheKey({
     page,
     limit,
-    search
+    search,
+    cursor
   });
 
   const cachedResult = await getCache(cacheKey);
@@ -35,7 +56,7 @@ const getStories = async ({
 
   console.log("Stories cache MISS:", cacheKey);
 
-  const where = search
+  const searchWhere = search
     ? {
         OR: [
           {
@@ -54,36 +75,54 @@ const getStories = async ({
       }
     : {};
 
-  const total = await prisma.story.count({
-    where
-  });
+  let where = searchWhere;
+  if (cursor) {
+    const { points, id } = decodeCursor(cursor);
+    const keysetWhere = points === null
+      ? { points: null, id: { gt: id } }
+      : {
+          OR: [
+            { points: { lt: points } },
+            { points, id: { gt: id } },
+            { points: null }
+          ]
+        };
+    where = { AND: [searchWhere, keysetWhere] };
+  }
+
+  const total = cursor ? null : await prisma.story.count({ where });
 
   const stories = await prisma.story.findMany({
     where,
     orderBy: [
       {
-        points: "desc"
+        points: {
+          sort: "desc",
+          nulls: "last"
+        }
       },
       {
         id: "asc"
       }
     ],
-    skip: (page - 1) * limit,
-    take: limit
+    skip: cursor ? 0 : (page - 1) * limit,
+    take: limit + 1
   });
 
+  const hasNextPage = stories.length > limit;
+  const pageStories = hasNextPage ? stories.slice(0, limit) : stories;
+  const nextCursor = hasNextPage ? encodeCursor(pageStories.at(-1)) : null;
+
   const result = {
-    stories,
+    stories: pageStories,
     pagination: {
       total,
       page,
       limit,
-      totalPages: Math.max(
-        Math.ceil(total / limit),
-        1
-      ),
-      hasNextPage: page * limit < total,
-      hasPreviousPage: page > 1
+      totalPages: total === null ? null : Math.max(Math.ceil(total / limit), 1),
+      hasNextPage,
+      hasPreviousPage: Boolean(cursor) || page > 1,
+      nextCursor
     }
   };
 

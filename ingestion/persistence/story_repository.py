@@ -9,7 +9,9 @@ def get_or_create_source(
     name,
     slug,
     source_type,
-    website_url=None
+    website_url=None,
+    political_lean="UNKNOWN",
+    reliability_score=None,
 ):
     connection = get_connection()
 
@@ -38,6 +40,8 @@ def get_or_create_source(
                 SET name = %s,
                     website_url = %s,
                     type = %s,
+                    political_lean = %s,
+                    reliability_score = %s,
                     is_active = TRUE,
                     updated_at = NOW()
                 WHERE id = %s
@@ -45,7 +49,7 @@ def get_or_create_source(
                 (
                     name,
                     website_url,
-                    source_type,
+                    source_type, political_lean, reliability_score,
                     source_id
                 )
             )
@@ -62,12 +66,14 @@ def get_or_create_source(
                     slug,
                     website_url,
                     type,
+                    political_lean,
+                    reliability_score,
                     is_active,
                     created_at,
                     updated_at
                 )
                 VALUES (
-                    %s, %s, %s, %s, %s, TRUE, NOW(), NOW()
+                    %s, %s, %s, %s, %s, %s, %s, TRUE, NOW(), NOW()
                 )
                 """,
                 (
@@ -75,7 +81,7 @@ def get_or_create_source(
                     name,
                     slug,
                     website_url,
-                    source_type
+                    source_type, political_lean, reliability_score,
                 )
             )
 

@@ -1,0 +1,28 @@
+const { z } = require("zod");
+
+const personalizedFeedQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(24).default(10)
+});
+
+const preferencesSchema = z.object({
+  preferences: z.array(z.object({
+    topicId: z.uuid("Invalid topic ID"),
+    preference: z.number().int().min(-5).max(5)
+  })).min(1).max(20).superRefine((preferences, context) => {
+    const topicIds = new Set();
+    for (const [index, preference] of preferences.entries()) {
+      if (topicIds.has(preference.topicId)) {
+        context.addIssue({ code: "custom", path: [index, "topicId"], message: "Topic IDs must be unique" });
+      }
+      topicIds.add(preference.topicId);
+    }
+  })
+});
+
+const readingActivitySchema = z.object({
+  durationSeconds: z.number().int().min(0).max(86_400).default(0),
+  completed: z.boolean().default(false)
+});
+
+module.exports = { personalizedFeedQuerySchema, preferencesSchema, readingActivitySchema };

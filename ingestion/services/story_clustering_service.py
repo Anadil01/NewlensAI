@@ -1,109 +1,80 @@
+from __future__ import annotations
+
+from typing import Any
 
 from clustering.story_clusterer import StoryClusterer
-
+from persistence.cluster_repository import create_cluster_with_stories
 from persistence.database import get_connection
 
-from persistence.cluster_repository import (
-    create_cluster_with_stories,
-)
+
+MIN_CONTENT_LENGTH = 100
+DEFAULT_CLUSTER_DESCRIPTION = "Automatically generated story cluster"
 
 
-def get_stories_for_clustering(limit=20):
+def get_stories_for_clustering(limit: int = 20) -> list[dict[str, Any]]:
+    """Return unclustered, article-length stories in deterministic order."""
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+
     connection = get_connection()
-
     try:
         cursor = connection.cursor()
-
         cursor.execute(
             """
-            SELECT
-                s.id,
-                s.title,
-                s.content,
-                s.published_at,
-                COALESCE(ai.entities, '[]'::jsonb) AS entities
+            SELECT s.id, s.title, s.content, s.published_at,
+                   COALESCE(ai.entities, '[]'::jsonb) AS entities
             FROM stories s
-
             LEFT JOIN LATERAL (
-                SELECT
-                    entities
-                FROM ai_summaries
+                SELECT entities FROM ai_summaries
                 WHERE story_id = s.id
-                ORDER BY created_at DESC
-                LIMIT 1
+                ORDER BY created_at DESC LIMIT 1
             ) ai ON TRUE
-
             WHERE s.content IS NOT NULL
-              AND s.content != ''
+              AND LENGTH(TRIM(s.content)) >= %s
               AND s.cluster_id IS NULL
-
-            ORDER BY s.created_at ASC
-
+            ORDER BY s.created_at ASC, s.id ASC
             LIMIT %s
             """,
-            (limit,),
+            (MIN_CONTENT_LENGTH, limit),
         )
-
-        rows = cursor.fetchall()
-
-        stories = []
-
-        for row in rows:
-            stories.append(
-                {
-                    "id": str(row[0]),
-                    "title": row[1],
-                    "content": row[2],
-                    "published_at": row[3],
-                    "entities": row[4] or [],
-                }
-            )
-
-        return stories
-
+        return [
+            {"id": str(row[0]), "title": row[1] or "Untitled story", "content": row[2],
+             "published_at": row[3], "entities": row[4] or []}
+            for row in cursor.fetchall()
+        ]
     finally:
         connection.close()
 
 
-def cluster_stories(
-    limit=20,
-    clusterer=None,
-):
-    if clusterer is None:
-        clusterer = StoryClusterer()
+def _cluster_title(story_ids: list[str], stories_by_id: dict[str, dict[str, Any]]) -> str:
+    """Use a representative headline instead of an opaque numbered title."""
+    title = stories_by_id[story_ids[0]]["title"].strip()
+    return title[:200] or "Untitled story cluster"
 
+
+def cluster_stories(limit: int = 20, clusterer: StoryClusterer | None = None) -> list[dict[str, Any]]:
+    """Cluster eligible stories and persist each valid group atomically."""
     stories = get_stories_for_clustering(limit)
-
     if not stories:
         return []
 
-    clusters = clusterer.cluster(stories)
+    clusters = (clusterer or StoryClusterer()).cluster(stories)
+    stories_by_id = {story["id"]: story for story in stories}
+    results: list[dict[str, Any]] = []
 
-    results = []
-
-    for index, cluster_story_ids in enumerate(clusters):
-
-        if len(cluster_story_ids) < 2:
+    for story_ids in clusters:
+        if len(story_ids) < 2:
             continue
-
-        cluster_title = f"News Cluster {index + 1}"
-
-        cluster_id = create_cluster_with_stories(
-            title=cluster_title,
-            description="Automatically generated story cluster",
-            story_ids=cluster_story_ids,
-        )
-
-        results.append(
-            {
-                "cluster_id": cluster_id,
-                "stories": cluster_story_ids,
-            }
-        )
-
-        print(
-            f"Created cluster {cluster_id}"
-        )
+        try:
+            cluster_id = create_cluster_with_stories(
+                title=_cluster_title(story_ids, stories_by_id),
+                description=DEFAULT_CLUSTER_DESCRIPTION,
+                story_ids=story_ids,
+            )
+            results.append({"success": True, "cluster_id": cluster_id, "stories": story_ids})
+            print(f"Created cluster {cluster_id} with {len(story_ids)} stories")
+        except Exception as error:
+            results.append({"success": False, "stories": story_ids, "error": str(error)})
+            print(f"Failed to create cluster for {story_ids}: {error}")
 
     return results
-

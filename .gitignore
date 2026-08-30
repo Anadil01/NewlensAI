@@ -1,0 +1,4 @@
+node_modules/
+.agents/
+.windsurf/
+venv

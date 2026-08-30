@@ -14,7 +14,12 @@ const protect = (req, res, next) => {
 
     const decoded = jwt.verify(
       token,
-      config.jwtSecret
+      config.jwtSecret,
+      {
+        algorithms: ["HS256"],
+        issuer: config.jwtIssuer,
+        audience: config.jwtAudience
+      }
     );
 
     if (!decoded.sub) {

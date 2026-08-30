@@ -1,4 +1,4 @@
-# NewsLens - AI Powered Personalized News Aggregator
+# NewsLensAi - AI Powered Personalized News Aggregator
 A smart news platform that aggregates articles from 100+ sources and uses AI to deliver a personalized, bias-aware feed.
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 # Domains - news , productivity

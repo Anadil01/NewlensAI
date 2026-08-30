@@ -1,0 +1,40 @@
+const asyncHandler = require("../utils/asyncHandler");
+const ApiResponse = require("../utils/ApiResponse");
+const personalizationService = require("../services/personalizationService");
+
+exports.getTopics = asyncHandler(async (req, res) => {
+  const topics = await personalizationService.getTopics();
+  return ApiResponse.success(res, { topics }, "Topics fetched successfully");
+});
+
+exports.getPreferences = asyncHandler(async (req, res) => {
+  const preferences = await personalizationService.getPreferences(req.user);
+  return ApiResponse.success(res, { preferences }, "Preferences fetched successfully");
+});
+
+exports.replacePreferences = asyncHandler(async (req, res) => {
+  const preferences = await personalizationService.replacePreferences(
+    req.user,
+    req.body.preferences
+  );
+  return ApiResponse.success(res, { preferences }, "Preferences saved successfully");
+});
+
+exports.getPersonalizedFeed = asyncHandler(async (req, res) => {
+  const result = await personalizationService.getPersonalizedFeed({
+    userId: req.user,
+    page: req.query.page,
+    limit: req.query.limit
+  });
+  return ApiResponse.success(res, result, "Personalized feed fetched successfully");
+});
+
+exports.recordReading = asyncHandler(async (req, res) => {
+  const result = await personalizationService.recordReading({
+    userId: req.user,
+    storyId: req.params.id,
+    durationSeconds: req.body.durationSeconds,
+    completed: req.body.completed
+  });
+  return ApiResponse.success(res, result, "Reading activity recorded", 201);
+});

@@ -4,6 +4,7 @@ const cors = require("cors");
 
 const config = require("./config/env");
 const securityHeaders = require("./middleware/securityMiddleware");
+const { apiLimiter } = require("./middleware/rateLimitMiddleware");
 const { connectRedis, redisClient } = require("./utils/redis");
 const prisma = require("./utils/prisma");
 
@@ -27,8 +28,12 @@ app.use(express.json({
 }));
 
 
+app.use("/api", apiLimiter);
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api", require("./routes/storyRoutes"));
+app.get("/api/topics", require("./controllers/personalizationController").getTopics);
+app.use("/api", require("./routes/personalizationRoutes"));
+app.use("/api", require("./routes/clusterRoutes"));
 app.use(require("./routes/healthRoutes"));
 
 

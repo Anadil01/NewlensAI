@@ -1,5 +1,4 @@
 const asyncHandler = require("../utils/asyncHandler");
-const AppError = require("../utils/AppError");
 const ApiResponse = require("../utils/ApiResponse");
 
 const searchService = require("../services/searchService");
@@ -44,6 +43,7 @@ exports.getStories = asyncHandler(async (req, res) => {
     page,
     limit,
     search,
+    cursor: req.query.cursor,
   });
 
   return ApiResponse.success(
@@ -100,51 +100,12 @@ exports.getBookmarks = asyncHandler(async (req, res) => {
 
 // Search stories
 exports.searchStories = asyncHandler(async (req, res) => {
-  const query =
-    req.query.q?.trim() || "";
-
-  const page = Math.max(
-    parseInt(req.query.page, 10) || 1,
-    1
-  );
-
-  const limit = Math.min(
-    Math.max(
-      parseInt(req.query.limit, 10) || 10,
-      1
-    ),
-    24
-  );
-
-  const sort =
-    req.query.sort || "relevance";
-
-  const allowedSorts = [
-    "relevance",
-    "points",
-    "newest",
-  ];
-
-  if (!allowedSorts.includes(sort)) {
-    throw new AppError(
-      "Invalid sort option",
-      400
-    );
-  }
-
-  if (!query) {
-    throw new AppError(
-      "Search query is required",
-      400
-    );
-  }
-
   const result =
     await searchService.searchStories({
-      query,
-      page,
-      limit,
-      sort,
+      query: req.query.q,
+      page: req.query.page,
+      limit: req.query.limit,
+      sort: req.query.sort,
     });
 
   return ApiResponse.success(

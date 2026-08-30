@@ -81,8 +81,9 @@ def run_all_sources():
                 slug=source["slug"],
 
                 source_type=source["type"],
-
-                website_url=source.get("website_url")
+                website_url=source.get("website_url"),
+                political_lean=source.get("political_lean", "UNKNOWN"),
+                reliability_score=source.get("reliability_score"),
             )
 
 

@@ -22,15 +22,17 @@ model User {
 }
 
 model Source {
-  id         String      @id @default(uuid()) @db.Uuid
-  name       String
-  slug       String      @unique
-  websiteUrl String      @map("website_url")
-  type       SourceType
-  isActive   Boolean     @default(true) @map("is_active")
-  createdAt  DateTime    @default(now()) @map("created_at")
-  updatedAt  DateTime    @updatedAt @map("updated_at")
-  stories    Story[]
+  id               String              @id @default(uuid()) @db.Uuid
+  name             String
+  slug             String              @unique
+  websiteUrl       String              @map("website_url")
+  type             SourceType
+  politicalLean    SourcePoliticalLean @default(UNKNOWN) @map("political_lean")
+  reliabilityScore Float?              @map("reliability_score")
+  isActive         Boolean             @default(true) @map("is_active")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  stories          Story[]
 }
 
 
@@ -61,6 +63,7 @@ model Story {
   @@unique([sourceId, externalId])
   @@index([sourceId, publishedAt(sort: Desc)])
   @@index([publishedAt(sort: Desc)])
+  @@index([points(sort: Desc), id])
   @@index([clusterId])
   @@map("stories")
 }
@@ -174,6 +177,15 @@ enum SourceType {
   WEBSITE
   RSS
   API
+}
+
+enum SourcePoliticalLean {
+  LEFT
+  CENTER_LEFT
+  CENTER
+  CENTER_RIGHT
+  RIGHT
+  UNKNOWN
 }
 
 

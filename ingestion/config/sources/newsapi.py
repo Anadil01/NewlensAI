@@ -23,6 +23,8 @@ newsapi_source = {
     "name": "NewsAPI",
     "website_url": "https://newsapi.org",
     "type": "API",
+    "political_lean": "UNKNOWN",
+    "reliability_score": 0.50,
     "enabled": True,
     "scraper": scrape_newsapi
 }

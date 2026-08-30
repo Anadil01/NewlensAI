@@ -3,6 +3,20 @@ const prisma = require("../utils/prisma");
 const {
   indexStory
 } = require("./searchService");
+const {
+  invalidateStoryCaches
+} = require("./storyCacheService");
+
+const refreshStoryCaches = async () => {
+  try {
+    await invalidateStoryCaches();
+  } catch (error) {
+    // The database write and search index are already durable. Do not report
+    // a failed write to callers solely because a short-lived cache could not
+    // be cleared; its TTL is the fallback.
+    console.error("Failed to invalidate story caches:", error.message);
+  }
+};
 
 const saveStory = async ({
   sourceId,
@@ -36,6 +50,7 @@ const saveStory = async ({
       });
 
     await indexStory(updatedStory);
+    await refreshStoryCaches();
 
     return {
       action: "updated",
@@ -60,6 +75,7 @@ const saveStory = async ({
     });
 
   await indexStory(createdStory);
+  await refreshStoryCaches();
 
   return {
     action: "inserted",

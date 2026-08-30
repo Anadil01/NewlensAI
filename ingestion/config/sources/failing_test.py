@@ -11,6 +11,8 @@ failing_source = {
 
     "name": "Failing Test Source",
 
+    "website_url": "https://example.invalid",
+
     "type": "TEST",
 
     # Disabled: this source always raises on purpose. It is a test
