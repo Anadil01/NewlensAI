@@ -21,12 +21,19 @@ exports.replacePreferences = asyncHandler(async (req, res) => {
 });
 
 exports.getPersonalizedFeed = asyncHandler(async (req, res) => {
-  const result = await personalizationService.getPersonalizedFeed({
-    userId: req.user,
-    page: req.query.page,
-    limit: req.query.limit
-  });
-  return ApiResponse.success(res, result, "Personalized feed fetched successfully");
+  const result =
+    await personalizationService.getPersonalizedFeed({
+      userId: req.user,
+      page: req.query.page,
+      limit: req.query.limit,
+      mode: req.query.mode
+    });
+
+  return ApiResponse.success(
+    res,
+    result,
+    `${req.query.mode} feed fetched successfully`
+  );
 });
 
 exports.recordReading = asyncHandler(async (req, res) => {
@@ -105,5 +112,85 @@ exports.removeStoryFeedback = asyncHandler(async (req, res) => {
     res,
     result,
     "Story feedback removed successfully"
+  );
+});
+
+
+exports.getSourcePreferences = asyncHandler(async (req, res) => {
+  const preferences =
+    await personalizationService.getSourcePreferences(req.user);
+
+  return ApiResponse.success(
+    res,
+    { preferences },
+    "Source preferences fetched successfully"
+  );
+});
+
+exports.followSource = asyncHandler(async (req, res) => {
+  const preference = await personalizationService.followSource({
+    userId: req.user,
+    sourceId: req.params.sourceId
+  });
+
+  return ApiResponse.success(
+    res,
+    { preference },
+    "Source followed successfully",
+    201
+  );
+});
+
+exports.unfollowSource = asyncHandler(async (req, res) => {
+  const result = await personalizationService.unfollowSource({
+    userId: req.user,
+    sourceId: req.params.sourceId
+  });
+
+  return ApiResponse.success(
+    res,
+    result,
+    "Source unfollowed successfully"
+  );
+});
+
+
+
+exports.skipStory = asyncHandler(async (req, res) => {
+  const result = await personalizationService.skipStory({
+    userId: req.user,
+    storyId: req.params.id
+  });
+
+  return ApiResponse.success(
+    res,
+    result,
+    "Story skipped successfully"
+  );
+});
+
+exports.getStorySkip = asyncHandler(async (req, res) => {
+  const result = await personalizationService.getStorySkip({
+    userId: req.user,
+    storyId: req.params.id
+  });
+
+  return ApiResponse.success(
+    res,
+    { skip: result },
+    "Story skip status fetched successfully"
+  );
+});
+
+exports.removeStorySkip = asyncHandler(async (req, res) => {
+  const result = await personalizationService.removeStorySkip({
+    userId: req.user,
+    storyId: req.params.id
+  });
+
+  return ApiResponse.success(
+    res,
+    result,
+    "Story skip removed successfully"
   );
 });

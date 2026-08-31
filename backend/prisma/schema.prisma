@@ -19,6 +19,7 @@ model User {
   preferences      UserPreference[]
   sourcePreferences UserSourcePreference[]
   feedback StoryFeedback[]
+  storySkips StorySkip[]
 
   @@map("users")
 }
@@ -46,6 +47,7 @@ model Story {
   cluster        StoryCluster?    @relation(fields: [clusterId], references: [id])
   source         sources          @relation(fields: [sourceId], references: [id])
   storyTopics    StoryTopic[]
+  storySkips StorySkip[]
 
   @@unique([sourceId, externalId])
   @@index([sourceId, publishedAt(sort: Desc)])
@@ -99,6 +101,20 @@ model StoryFeedback {
 enum FeedbackType {
   LIKE
   DISLIKE
+}
+
+model StorySkip {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  storyId   String   @map("story_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storyId])
+  @@index([userId])
+  @@map("story_skips")
 }
 
 model Topic {

@@ -1,7 +1,14 @@
 const express = require("express");
 const protect = require("../middleware/authMiddleware");
 const validate = require("../middleware/validateMiddleware");
-const { personalizedFeedQuerySchema, preferencesSchema, readingActivitySchema , topicIdParamsSchema, feedbackSchema} = require("../validations/personalizationValidation");
+const {
+  personalizedFeedQuerySchema,
+  preferencesSchema,
+  readingActivitySchema,
+  topicIdParamsSchema,
+  sourceIdParamsSchema,
+  feedbackSchema
+} = require("../validations/personalizationValidation");
 const { storyIdParamsSchema } = require("../validations/storyValidation");
 const controller = require("../controllers/personalizationController");
 
@@ -43,4 +50,40 @@ router.post(
     validate(storyIdParamsSchema, "params"),
     controller.removeStoryFeedback
   );
+
+  router.post(
+    "/stories/:id/skip",
+    validate(storyIdParamsSchema, "params"),
+    controller.skipStory
+  );
+  
+  router.get(
+    "/stories/:id/skip",
+    validate(storyIdParamsSchema, "params"),
+    controller.getStorySkip
+  );
+  
+  router.delete(
+    "/stories/:id/skip",
+    validate(storyIdParamsSchema, "params"),
+    controller.removeStorySkip
+  );
+
+  router.get(
+    "/me/source-preferences",
+    controller.getSourcePreferences
+  );
+  
+  router.post(
+    "/sources/:sourceId/follow",
+    validate(sourceIdParamsSchema, "params"),
+    controller.followSource
+  );
+  
+  router.delete(
+    "/sources/:sourceId/follow",
+    validate(sourceIdParamsSchema, "params"),
+    controller.unfollowSource
+  );
+
 module.exports = router;

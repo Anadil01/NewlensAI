@@ -56,7 +56,7 @@ const startServer = async () => {
     const ingestionWorker = require("./workers/ingestionWorker");
 
     const server = app.listen(config.port, () => {
-      console.log(`Server running on ${config.port}`);
+      console.log(`🚀 Server running on ${config.port}`);
     });
 
     const shutdown = async (signal) => {

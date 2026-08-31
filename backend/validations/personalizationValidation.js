@@ -2,7 +2,12 @@ const { z } = require("zod");
 
 const personalizedFeedQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(24).default(10)
+
+  limit: z.coerce.number().int().min(1).max(24).default(10),
+
+  mode: z
+    .enum(["personalized", "latest", "trending"])
+    .default("personalized")
 });
 
 const preferencesSchema = z.object({
@@ -43,10 +48,20 @@ const feedbackSchema = z.object({
   feedback: z.enum(["LIKE", "DISLIKE"])
 });
 
+const sourceIdParamsSchema = z.object({
+  sourceId: z.uuid("Invalid source ID")
+});
+
+const skipSchema = z.object({
+  skipped: z.boolean().default(true)
+});
+
 module.exports = {
   personalizedFeedQuerySchema,
   preferencesSchema,
   readingActivitySchema,
   topicIdParamsSchema,
-  feedbackSchema
+  feedbackSchema,
+  sourceIdParamsSchema,
+  skipSchema
 };
