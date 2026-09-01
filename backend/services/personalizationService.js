@@ -11,15 +11,27 @@ const getPreferences = async (userId) => {
   });
 };
 
-const getTopics = async () => prisma.topic.findMany({
-  orderBy: { name: "asc" },
-  include: { _count: { select: { storyTopics: true } } }
-});
+const getTopics = async () =>
+  prisma.topic.findMany({
+    orderBy: { name: "asc" },
+    include: {
+      _count: {
+        select: {
+          storyTopics: true
+        }
+      }
+    }
+  });
 
 const replacePreferences = async (userId, preferences) => {
   const topicIds = preferences.map(({ topicId }) => topicId);
+
   const topicCount = await prisma.topic.count({
-    where: { id: { in: topicIds } }
+    where: {
+      id: {
+        in: topicIds
+      }
+    }
   });
 
   if (topicCount !== topicIds.length) {
@@ -27,7 +39,10 @@ const replacePreferences = async (userId, preferences) => {
   }
 
   await prisma.$transaction([
-    prisma.userPreference.deleteMany({ where: { userId } }),
+    prisma.userPreference.deleteMany({
+      where: { userId }
+    }),
+
     prisma.userPreference.createMany({
       data: preferences.map(({ topicId, preference }) => ({
         userId,
@@ -40,34 +55,270 @@ const replacePreferences = async (userId, preferences) => {
   return getPreferences(userId);
 };
 
+// ============================================================
+// CLUSTER-AWARE DIVERSIFICATION
+// ============================================================
+//
+// A cluster represents one real-world news event.
+//
+// Example:
+//
+// Cluster A:
+//   Story A1
+//   Story A2
+//   Story A3
+//
+// Cluster B:
+//   Story B1
+//   Story B2
+//
+// Cluster C:
+//   Story C1
+//
+// Instead of showing:
+//
+//   A1, A2, A3, B1, B2, C1
+//
+// We diversify the feed:
+//
+//   A1, B1, C1, A2, B2, A3
+//
+// This prevents one real-world event from dominating the feed.
+//
+// IMPORTANT:
+// The input is expected to already be sorted by relevanceScore.
+// Therefore, the first story inside each cluster is the strongest
+// story from that cluster.
+//
+// Unclustered stories are treated as individual groups so they
+// are never accidentally merged together.
+// ============================================================
+
+const diversifyByCluster = (stories) => {
+  if (!stories.length) {
+    return [];
+  }
+
+  // ----------------------------------------------------------
+  // Group stories by cluster.
+  //
+  // Map insertion order is important here.
+  // The first time we see a cluster determines the order in
+  // which that cluster participates in diversification.
+  // ----------------------------------------------------------
+
+  const clusters = new Map();
+
+  for (const story of stories) {
+    // Clustered stories use their real cluster ID.
+    //
+    // Unclustered stories get a unique synthetic ID so that
+    // each unclustered story remains independent.
+    const clusterId =
+      story.clusterId || `story:${story.id}`;
+
+    if (!clusters.has(clusterId)) {
+      clusters.set(clusterId, []);
+    }
+
+    clusters.get(clusterId).push(story);
+  }
+
+  // ----------------------------------------------------------
+  // Round-robin through clusters.
+  //
+  // Example:
+  //
+  // cluster-a: [a1, a2, a3]
+  // cluster-b: [b1, b2]
+  // cluster-c: [c1]
+  //
+  // Round 1:
+  //   a1, b1, c1
+  //
+  // Round 2:
+  //   a2, b2
+  //
+  // Round 3:
+  //   a3
+  //
+  // Final:
+  //   a1, b1, c1, a2, b2, a3
+  // ----------------------------------------------------------
+
+  const diversified = [];
+
+  const clusterGroups = Array.from(
+    clusters.values()
+  );
+
+  const maxClusterSize = Math.max(
+    ...clusterGroups.map(
+      (clusterStories) => clusterStories.length
+    )
+  );
+
+  for (
+    let position = 0;
+    position < maxClusterSize;
+    position++
+  ) {
+    for (const clusterStories of clusterGroups) {
+      if (position >= clusterStories.length) {
+        continue;
+      }
+
+      const story = clusterStories[position];
+
+      diversified.push({
+        ...story,
+
+        // Useful metadata for the frontend.
+        clusterInfo: story.cluster
+          ? {
+              id: story.cluster.id,
+              title: story.cluster.title,
+              description: story.cluster.description
+            }
+          : null,
+
+        isClusterRepresentative:
+          Boolean(story.clusterId) &&
+          position === 0
+      });
+    }
+  }
+
+  return diversified;
+};
+
+// ============================================================
+// CLUSTER DIMINISHING RETURNS
+// ============================================================
+//
+// Stories belonging to the same cluster receive progressively
+// smaller relevance multipliers.
+//
+// First story:  1.00
+// Second story: 0.80
+// Third story:  0.65
+// Fourth+:     0.55
+//
+// This does NOT remove stories.
+//
+// It only reduces the score of repeated coverage of the same
+// real-world event.
+//
+// Example:
+//
+// A1 = 10 * 1.00 = 10
+// A2 = 10 * 0.80 = 8
+// A3 = 10 * 0.65 = 6.5
+// A4 = 10 * 0.55 = 5.5
+//
+// Unclustered stories are not penalized.
+// ============================================================
+
+const applyClusterDiminishingReturns = (stories) => {
+  const clusterCounts = new Map();
+
+  return stories.map((story) => {
+    // Unclustered stories don't compete with each other.
+    if (!story.clusterId) {
+      return story;
+    }
+
+    const count =
+      clusterCounts.get(story.clusterId) || 0;
+
+    clusterCounts.set(
+      story.clusterId,
+      count + 1
+    );
+
+    // First story = 100%
+    // Second story = 80%
+    // Third story = 65%
+    // Fourth+ = 55%
+
+    let multiplier;
+
+    if (count === 0) {
+      multiplier = 1;
+    } else if (count === 1) {
+      multiplier = 0.8;
+    } else if (count === 2) {
+      multiplier = 0.65;
+    } else {
+      multiplier = 0.55;
+    }
+
+    const originalScore =
+      story.relevanceScore ?? 0;
+
+    const adjustedScore =
+      originalScore * multiplier;
+
+    return {
+      ...story,
+
+      relevanceScore: Number(
+        adjustedScore.toFixed(3)
+      ),
+
+      scoring: {
+        ...story.scoring,
+
+        clusterDiminishingReturns: {
+          clusterPosition: count + 1,
+          multiplier,
+          originalScore,
+          adjustedScore: Number(
+            adjustedScore.toFixed(3)
+          )
+        }
+      }
+    };
+  });
+};
+
+// ============================================================
+// PERSONALIZED FEED
+// ============================================================
+
 const getPersonalizedFeed = async ({
   userId,
   page = 1,
   limit = 10,
   mode = "personalized"
 }) => {
-  // ------------------------------------------------------------
-  // 1. Get user's topic preferences
-  // ------------------------------------------------------------
-  const preferences = await getPreferences(userId);
+  // ============================================================
+  // 1. GET USER TOPIC PREFERENCES
+  // ============================================================
+
+  const preferences =
+    await getPreferences(userId);
 
   const preferenceByTopic = new Map(
-    preferences.map(({ topicId, preference }) => [
-      topicId,
-      preference
-    ])
+    preferences.map(
+      ({ topicId, preference }) => [
+        topicId,
+        preference
+      ]
+    )
   );
 
-  // ------------------------------------------------------------
-  // 2. Get user's source preferences
+  // ============================================================
+  // 2. GET USER SOURCE PREFERENCES
   //
-  // Source preferences are only needed for the
-  // personalized feed.
-  // ------------------------------------------------------------
+  // Source preferences only affect personalized mode.
+  // ============================================================
+
   const sourcePreferences =
     mode === "personalized"
       ? await prisma.userSourcePreference.findMany({
           where: { userId },
+
           select: {
             sourceId: true,
             preference: true
@@ -76,71 +327,99 @@ const getPersonalizedFeed = async ({
       : [];
 
   const preferenceBySource = new Map(
-    sourcePreferences.map(({ sourceId, preference }) => [
-      sourceId,
-      preference
-    ])
+    sourcePreferences.map(
+      ({ sourceId, preference }) => [
+        sourceId,
+        preference
+      ]
+    )
   );
 
-  // ------------------------------------------------------------
-  // 3. Get stories skipped by this user
+  // ============================================================
+  // 3. GET SKIPPED STORIES
   //
-  // Skipped stories should never appear in any feed mode.
-  // ------------------------------------------------------------
-  const skippedStories = await prisma.storySkip.findMany({
-    where: {
-      userId
-    },
-    select: {
-      storyId: true
-    }
-  });
+  // Skipped stories never appear in any feed mode.
+  // ============================================================
+
+  const skippedStories =
+    await prisma.storySkip.findMany({
+      where: {
+        userId
+      },
+
+      select: {
+        storyId: true
+      }
+    });
 
   const skippedStoryIds = new Set(
-    skippedStories.map(({ storyId }) => storyId)
+    skippedStories.map(
+      ({ storyId }) => storyId
+    )
   );
 
-  // ------------------------------------------------------------
-  // 4. Fetch recent candidate stories
-  // ------------------------------------------------------------
-  const candidates = await prisma.story.findMany({
-    include: {
-      source: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          websiteUrl: true,
-          politicalLean: true,
-          reliabilityScore: true
+  // ============================================================
+  // 4. FETCH RECENT CANDIDATES
+  // ============================================================
+
+  const candidates =
+    await prisma.story.findMany({
+      include: {
+        source: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            websiteUrl: true,
+            politicalLean: true,
+            reliabilityScore: true
+          }
+        },
+
+        cluster: {
+          select: {
+            id: true,
+            title: true,
+            description: true
+          }
+        },
+
+        storyTopics: {
+          include: {
+            topic: true
+          }
         }
       },
 
-      storyTopics: {
-        include: {
-          topic: true
+      orderBy: [
+        {
+          publishedAt: "desc"
+        },
+        {
+          createdAt: "desc"
         }
-      }
-    },
+      ],
 
-    orderBy: [
-      { publishedAt: "desc" },
-      { createdAt: "desc" }
-    ],
+      take: MAX_CANDIDATES
+    });
 
-    take: MAX_CANDIDATES
-  });
+  // ============================================================
+  // 5. REMOVE SKIPPED STORIES
+  // ============================================================
+
+  const eligibleStories =
+    candidates.filter(
+      (story) =>
+        !skippedStoryIds.has(story.id)
+    );
 
   // ============================================================
   // LATEST MODE
   // ============================================================
 
   if (mode === "latest") {
-    const latestStories = candidates
-      .filter(
-        (story) => !skippedStoryIds.has(story.id)
-      )
-      .map((story) => ({
+    const latestStories =
+      eligibleStories.map((story) => ({
         ...story,
 
         relevanceScore: null,
@@ -150,19 +429,40 @@ const getPersonalizedFeed = async ({
         }
       }));
 
-    const total = latestStories.length;
+    // ----------------------------------------------------------
+    // Latest feed is primarily chronological.
+    // ----------------------------------------------------------
 
-    const stories = latestStories.slice(
-      (page - 1) * limit,
-      page * limit
-    );
+    const chronologicalStories =
+      latestStories.sort((a, b) => {
+        return (
+          new Date(
+            b.publishedAt || b.createdAt
+          ) -
+          new Date(
+            a.publishedAt || a.createdAt
+          )
+        );
+      });
+
+    const total =
+      chronologicalStories.length;
+
+    const stories =
+      chronologicalStories.slice(
+        (page - 1) * limit,
+        page * limit
+      );
 
     return {
       stories,
 
       personalization: {
-        topicPreferenceCount: preferences.length,
+        topicPreferenceCount:
+          preferences.length,
+
         sourcePreferenceCount: 0,
+
         mode: "latest"
       },
 
@@ -192,101 +492,133 @@ const getPersonalizedFeed = async ({
   if (mode === "trending") {
     const now = Date.now();
 
-    const trendingStories = candidates
-      .filter(
-        (story) => !skippedStoryIds.has(story.id)
-      )
-      .map((story) => {
-        const publishedTime = new Date(
-          story.publishedAt || story.createdAt
-        ).getTime();
+    const trendingStories =
+      eligibleStories
+        .map((story) => {
+          const publishedTime =
+            new Date(
+              story.publishedAt ||
+                story.createdAt
+            ).getTime();
 
-        // Age of story in hours.
-        const ageHours = Math.max(
-          (now - publishedTime) / (1000 * 60 * 60),
-          0
-        );
+          // ----------------------------------------------------
+          // Story age in hours.
+          // ----------------------------------------------------
 
-        // Stories lose some trending strength as they age.
-        //
-        // At age 0:
-        // recencyMultiplier = 1
-        //
-        // At age 24h:
-        // recencyMultiplier ≈ 0.5
-        //
-        // At age 48h:
-        // recencyMultiplier ≈ 0.33
-        const recencyMultiplier =
-          1 / (1 + ageHours / 24);
+          const ageHours =
+            Math.max(
+              (now - publishedTime) /
+                (1000 * 60 * 60),
+              0
+            );
 
-        const popularityScore =
-          Math.min(
-            Math.max(story.points || 0, 0),
-            1000
-          );
+          // ----------------------------------------------------
+          // Recency decay.
+          //
+          // 0 hours  -> 1.00
+          // 24 hours -> 0.50
+          // 48 hours -> ~0.33
+          // ----------------------------------------------------
 
-        const trendingScore =
-          popularityScore *
-          recencyMultiplier;
+          const recencyMultiplier =
+            1 /
+            (1 + ageHours / 24);
 
-        return {
-          ...story,
+          // ----------------------------------------------------
+          // Popularity.
+          // ----------------------------------------------------
 
-          relevanceScore: Number(
-            trendingScore.toFixed(3)
-          ),
+          const popularityScore =
+            Math.min(
+              Math.max(
+                story.points || 0,
+                0
+              ),
+              1000
+            );
 
-          scoring: {
-            mode: "trending",
+          const trendingScore =
+            popularityScore *
+            recencyMultiplier;
 
-            popularityScore,
+          return {
+            ...story,
 
-            ageHours: Number(
-              ageHours.toFixed(2)
+            relevanceScore: Number(
+              trendingScore.toFixed(3)
             ),
 
-            recencyMultiplier: Number(
-              recencyMultiplier.toFixed(3)
-            )
-          }
-        };
-      })
+            scoring: {
+              mode: "trending",
 
-      .sort((a, b) => {
-        if (
-          b.relevanceScore !==
-          a.relevanceScore
-        ) {
-          return (
-            b.relevanceScore -
+              popularityScore,
+
+              ageHours: Number(
+                ageHours.toFixed(2)
+              ),
+
+              recencyMultiplier:
+                Number(
+                  recencyMultiplier.toFixed(3)
+                )
+            }
+          };
+        })
+
+        // ------------------------------------------------------
+        // Highest trending score first.
+        // ------------------------------------------------------
+
+        .sort((a, b) => {
+          if (
+            b.relevanceScore !==
             a.relevanceScore
+          ) {
+            return (
+              b.relevanceScore -
+              a.relevanceScore
+            );
+          }
+
+          return (
+            new Date(
+              b.publishedAt ||
+                b.createdAt
+            ) -
+            new Date(
+              a.publishedAt ||
+                a.createdAt
+            )
           );
-        }
+        });
 
-        return (
-          new Date(
-            b.publishedAt || b.createdAt
-          ) -
-          new Date(
-            a.publishedAt || a.createdAt
-          )
-        );
-      });
+    // ----------------------------------------------------------
+    // CLUSTER DIVERSIFICATION
+    // ----------------------------------------------------------
 
-    const total = trendingStories.length;
+    const diversifiedTrending =
+      diversifyByCluster(
+        trendingStories
+      );
 
-    const stories = trendingStories.slice(
-      (page - 1) * limit,
-      page * limit
-    );
+    const total =
+      diversifiedTrending.length;
+
+    const stories =
+      diversifiedTrending.slice(
+        (page - 1) * limit,
+        page * limit
+      );
 
     return {
       stories,
 
       personalization: {
-        topicPreferenceCount: preferences.length,
+        topicPreferenceCount:
+          preferences.length,
+
         sourcePreferenceCount: 0,
+
         mode: "trending"
       },
 
@@ -313,108 +645,187 @@ const getPersonalizedFeed = async ({
   // PERSONALIZED MODE
   // ============================================================
 
-  const scoredStories = candidates
-    .filter(
-      (story) => !skippedStoryIds.has(story.id)
-    )
-    .map((story) => {
-      // --------------------------------------------------------
-      // Topic score
-      // --------------------------------------------------------
-      const topicScore =
-        story.storyTopics.reduce(
-          (score, { topicId }) => {
-            return (
-              score +
-              (
-                preferenceByTopic.get(topicId) ||
-                0
+  const scoredStories =
+    eligibleStories
+      .map((story) => {
+        // ------------------------------------------------------
+        // TOPIC SCORE
+        // ------------------------------------------------------
+
+        const topicScore =
+          story.storyTopics.reduce(
+            (score, { topicId }) => {
+              return (
+                score +
+                (
+                  preferenceByTopic.get(
+                    topicId
+                  ) || 0
+                )
+              );
+            },
+            0
+          );
+
+        // ------------------------------------------------------
+        // SOURCE SCORE
+        // ------------------------------------------------------
+
+        const sourceScore =
+          preferenceBySource.get(
+            story.sourceId
+          ) || 0;
+
+        // ------------------------------------------------------
+        // POPULARITY SCORE
+        // ------------------------------------------------------
+
+        const popularityScore =
+          Math.min(
+            Math.max(
+              story.points || 0,
+              0
+            ),
+            1000
+          ) / 1000;
+
+        // ------------------------------------------------------
+        // FINAL RELEVANCE SCORE
+        // ------------------------------------------------------
+
+        const relevanceScore =
+          topicScore +
+          sourceScore +
+          popularityScore;
+
+        return {
+          ...story,
+
+          scoring: {
+            mode: "personalized",
+
+            topicScore,
+
+            sourceScore,
+
+            popularityScore:
+              Number(
+                popularityScore.toFixed(3)
               )
-            );
           },
-          0
-        );
+
+          relevanceScore:
+            Number(
+              relevanceScore.toFixed(3)
+            )
+        };
+      })
 
       // --------------------------------------------------------
-      // Source score
+      // Don't recommend strongly negative stories.
       // --------------------------------------------------------
-      const sourceScore =
-        preferenceBySource.get(
-          story.sourceId
-        ) || 0;
 
-      // --------------------------------------------------------
-      // Popularity score
-      // --------------------------------------------------------
-      const popularityScore =
-        Math.min(
-          Math.max(story.points || 0, 0),
-          1000
-        ) / 1000;
+      .filter(
+        (story) =>
+          story.relevanceScore >= 0
+      )
 
       // --------------------------------------------------------
-      // Final score
+      // Highest relevance first.
       // --------------------------------------------------------
-      const relevanceScore =
-        topicScore +
-        sourceScore +
-        popularityScore;
 
-      return {
-        ...story,
-
-        scoring: {
-          mode: "personalized",
-
-          topicScore,
-
-          sourceScore,
-
-          popularityScore: Number(
-            popularityScore.toFixed(3)
-          )
-        },
-
-        relevanceScore: Number(
-          relevanceScore.toFixed(3)
-        )
-      };
-    })
-
-    // Don't recommend strongly negative stories.
-    .filter(
-      (story) =>
-        story.relevanceScore >= 0
-    )
-
-    // Highest relevance first.
-    .sort((a, b) => {
-      if (
-        b.relevanceScore !==
-        a.relevanceScore
-      ) {
-        return (
-          b.relevanceScore -
+      .sort((a, b) => {
+        if (
+          b.relevanceScore !==
           a.relevanceScore
+        ) {
+          return (
+            b.relevanceScore -
+            a.relevanceScore
+          );
+        }
+
+        return (
+          new Date(
+            b.publishedAt ||
+              b.createdAt
+          ) -
+          new Date(
+            a.publishedAt ||
+              a.createdAt
+          )
+        );
+      });
+
+  // ============================================================
+  // CLUSTER-AWARE DIMINISHING RETURNS
+  // ============================================================
+
+  const clusterAdjustedStories =
+    applyClusterDiminishingReturns(
+      scoredStories
+    );
+
+  // ------------------------------------------------------------
+  // Re-sort after applying diminishing returns.
+  // ------------------------------------------------------------
+
+  const rerankedStories =
+    clusterAdjustedStories.sort(
+      (a, b) => {
+        if (
+          b.relevanceScore !==
+          a.relevanceScore
+        ) {
+          return (
+            b.relevanceScore -
+            a.relevanceScore
+          );
+        }
+
+        return (
+          new Date(
+            b.publishedAt ||
+              b.createdAt
+          ) -
+          new Date(
+            a.publishedAt ||
+              a.createdAt
+          )
         );
       }
+    );
 
-      return (
-        new Date(
-          b.publishedAt || b.createdAt
-        ) -
-        new Date(
-          a.publishedAt || a.createdAt
-        )
-      );
-    });
+  // ============================================================
+  // CLUSTER-AWARE DIVERSIFICATION
+  //
+  // IMPORTANT:
+  // This does NOT remove duplicate cluster stories.
+  //
+  // It spreads them throughout the feed.
+  // ============================================================
 
-  const total = scoredStories.length;
+  const diversifiedStories =
+    diversifyByCluster(
+      rerankedStories
+    );
 
-  const stories = scoredStories.slice(
-    (page - 1) * limit,
-    page * limit
-  );
+  // ============================================================
+  // PAGINATION
+  // ============================================================
+
+  const total =
+    diversifiedStories.length;
+
+  const stories =
+    diversifiedStories.slice(
+      (page - 1) * limit,
+      page * limit
+    );
+
+  // ============================================================
+  // RESPONSE
+  // ============================================================
 
   return {
     stories,
@@ -448,86 +859,179 @@ const getPersonalizedFeed = async ({
   };
 };
 
-const recordReading = async ({ userId, storyId, durationSeconds, completed }) => {
-  const story = await prisma.story.findUnique({
-    where: { id: storyId },
-    include: { storyTopics: { select: { topicId: true } } }
-  });
+// ============================================================
+// READING HISTORY
+// ============================================================
 
-  if (!story) {
-    throw new AppError("Story not found", 404);
-  }
+const recordReading = async ({
+  userId,
+  storyId,
+  durationSeconds,
+  completed
+}) => {
+  const story =
+    await prisma.story.findUnique({
+      where: {
+        id: storyId
+      },
 
-  // Completing a story is a stronger signal than simply opening it. A short
-  // read does not change recommendations, preventing accidental taps from
-  // distorting the feed.
-  const affinityDelta = completed ? 2 : (durationSeconds >= 30 ? 1 : 0);
-
-  await prisma.$transaction(async (transaction) => {
-    await transaction.readingHistory.create({
-      data: { userId, storyId, durationSeconds, completed }
+      include: {
+        storyTopics: {
+          select: {
+            topicId: true
+          }
+        }
+      }
     });
 
-    if (!affinityDelta) {
-      return;
-    }
-
-    for (const { topicId } of story.storyTopics) {
-      const current = await transaction.userPreference.findUnique({
-        where: { userId_topicId: { userId, topicId } }
-      });
-      const preference = Math.min(5, (current?.preference || 0) + affinityDelta);
-
-      await transaction.userPreference.upsert({
-        where: { userId_topicId: { userId, topicId } },
-        create: { userId, topicId, preference },
-        update: { preference }
-      });
-    }
-  });
-
-  return { recorded: true, affinityDelta, topicCount: story.storyTopics.length };
-};
-
-const followTopic = async ({ userId, topicId }) => {
-  const topic = await prisma.topic.findUnique({
-    where: { id: topicId }
-  });
-
-  if (!topic) {
-    throw new AppError("Topic not found", 404);
+  if (!story) {
+    throw new AppError(
+      "Story not found",
+      404
+    );
   }
 
-  const preference = await prisma.userPreference.upsert({
-    where: {
-      userId_topicId: {
-        userId,
-        topicId
+  // Completing a story is a stronger signal than simply
+  // opening it.
+  //
+  // A short read does not change recommendations, preventing
+  // accidental taps from distorting the feed.
+
+  const affinityDelta =
+    completed
+      ? 2
+      : durationSeconds >= 30
+        ? 1
+        : 0;
+
+  await prisma.$transaction(
+    async (transaction) => {
+      await transaction.readingHistory.create({
+        data: {
+          userId,
+          storyId,
+          durationSeconds,
+          completed
+        }
+      });
+
+      if (!affinityDelta) {
+        return;
       }
-    },
-    create: {
-      userId,
-      topicId,
-      preference: 5
-    },
-    update: {
-      preference: 5
-    },
-    include: {
-      topic: true
+
+      for (const { topicId } of story.storyTopics) {
+        const current =
+          await transaction.userPreference.findUnique({
+            where: {
+              userId_topicId: {
+                userId,
+                topicId
+              }
+            }
+          });
+
+        const preference =
+          Math.min(
+            5,
+            (current?.preference || 0) +
+              affinityDelta
+          );
+
+        await transaction.userPreference.upsert({
+          where: {
+            userId_topicId: {
+              userId,
+              topicId
+            }
+          },
+
+          create: {
+            userId,
+            topicId,
+            preference
+          },
+
+          update: {
+            preference
+          }
+        });
+      }
     }
-  });
+  );
+
+  return {
+    recorded: true,
+    affinityDelta,
+    topicCount:
+      story.storyTopics.length
+  };
+};
+
+// ============================================================
+// TOPIC FOLLOW
+// ============================================================
+
+const followTopic = async ({
+  userId,
+  topicId
+}) => {
+  const topic =
+    await prisma.topic.findUnique({
+      where: {
+        id: topicId
+      }
+    });
+
+  if (!topic) {
+    throw new AppError(
+      "Topic not found",
+      404
+    );
+  }
+
+  const preference =
+    await prisma.userPreference.upsert({
+      where: {
+        userId_topicId: {
+          userId,
+          topicId
+        }
+      },
+
+      create: {
+        userId,
+        topicId,
+        preference: 5
+      },
+
+      update: {
+        preference: 5
+      },
+
+      include: {
+        topic: true
+      }
+    });
 
   return preference;
 };
 
-const unfollowTopic = async ({ userId, topicId }) => {
-  const topic = await prisma.topic.findUnique({
-    where: { id: topicId }
-  });
+const unfollowTopic = async ({
+  userId,
+  topicId
+}) => {
+  const topic =
+    await prisma.topic.findUnique({
+      where: {
+        id: topicId
+      }
+    });
 
   if (!topic) {
-    throw new AppError("Topic not found", 404);
+    throw new AppError(
+      "Topic not found",
+      404
+    );
   }
 
   await prisma.userPreference.deleteMany({
@@ -543,12 +1047,22 @@ const unfollowTopic = async ({ userId, topicId }) => {
   };
 };
 
-const getSourcePreferences = async (userId) => {
+// ============================================================
+// SOURCE PREFERENCES
+// ============================================================
+
+const getSourcePreferences = async (
+  userId
+) => {
   return prisma.userSourcePreference.findMany({
-    where: { userId },
+    where: {
+      userId
+    },
+
     include: {
       source: true
     },
+
     orderBy: {
       source: {
         name: "asc"
@@ -557,45 +1071,67 @@ const getSourcePreferences = async (userId) => {
   });
 };
 
-const followSource = async ({ userId, sourceId }) => {
-  const source = await prisma.sources.findUnique({
-    where: { id: sourceId }
-  });
+const followSource = async ({
+  userId,
+  sourceId
+}) => {
+  const source =
+    await prisma.sources.findUnique({
+      where: {
+        id: sourceId
+      }
+    });
 
   if (!source) {
-    throw new AppError("Source not found", 404);
+    throw new AppError(
+      "Source not found",
+      404
+    );
   }
 
-  const preference = await prisma.userSourcePreference.upsert({
-    where: {
-      userId_sourceId: {
+  const preference =
+    await prisma.userSourcePreference.upsert({
+      where: {
+        userId_sourceId: {
+          userId,
+          sourceId
+        }
+      },
+
+      create: {
         userId,
-        sourceId
+        sourceId,
+        preference: 5
+      },
+
+      update: {
+        preference: 5
+      },
+
+      include: {
+        source: true
       }
-    },
-    create: {
-      userId,
-      sourceId,
-      preference: 5
-    },
-    update: {
-      preference: 5
-    },
-    include: {
-      source: true
-    }
-  });
+    });
 
   return preference;
 };
 
-const unfollowSource = async ({ userId, sourceId }) => {
-  const source = await prisma.sources.findUnique({
-    where: { id: sourceId }
-  });
+const unfollowSource = async ({
+  userId,
+  sourceId
+}) => {
+  const source =
+    await prisma.sources.findUnique({
+      where: {
+        id: sourceId
+      }
+    });
 
   if (!source) {
-    throw new AppError("Source not found", 404);
+    throw new AppError(
+      "Source not found",
+      404
+    );
   }
 
   await prisma.userSourcePreference.deleteMany({
@@ -611,112 +1147,146 @@ const unfollowSource = async ({ userId, sourceId }) => {
   };
 };
 
+// ============================================================
+// STORY FEEDBACK
+// ============================================================
+
 const setStoryFeedback = async ({
   userId,
   storyId,
   feedback
 }) => {
-  const story = await prisma.story.findUnique({
-    where: { id: storyId },
-    include: {
-      storyTopics: {
-        select: {
-          topicId: true
+  const story =
+    await prisma.story.findUnique({
+      where: {
+        id: storyId
+      },
+
+      include: {
+        storyTopics: {
+          select: {
+            topicId: true
+          }
         }
       }
-    }
-  });
+    });
 
   if (!story) {
-    throw new AppError("Story not found", 404);
+    throw new AppError(
+      "Story not found",
+      404
+    );
   }
 
-  const existingFeedback = await prisma.storyFeedback.findUnique({
-    where: {
-      userId_storyId: {
-        userId,
-        storyId
-      }
-    }
-  });
-
-  // Convert feedback into its recommendation signal.
-  const signal = feedback === "LIKE" ? 1 : -1;
-  const previousSignal = existingFeedback
-    ? (existingFeedback.feedback === "LIKE" ? 1 : -1)
-    : 0;
-
-  // If the user submits the same feedback again,
-  // don't change their preferences.
-  const preferenceDelta = signal - previousSignal;
-
-  await prisma.$transaction(async (transaction) => {
-    await transaction.storyFeedback.upsert({
+  const existingFeedback =
+    await prisma.storyFeedback.findUnique({
       where: {
         userId_storyId: {
           userId,
           storyId
         }
-      },
-      create: {
-        userId,
-        storyId,
-        feedback
-      },
-      update: {
-        feedback
       }
     });
 
-    if (preferenceDelta === 0) {
-      return;
-    }
+  // Convert feedback into its recommendation signal.
+  const signal =
+    feedback === "LIKE"
+      ? 1
+      : -1;
 
-    for (const { topicId } of story.storyTopics) {
-      const current = await transaction.userPreference.findUnique({
+  const previousSignal =
+    existingFeedback
+      ? existingFeedback.feedback === "LIKE"
+        ? 1
+        : -1
+      : 0;
+
+  const preferenceDelta =
+    signal - previousSignal;
+
+  await prisma.$transaction(
+    async (transaction) => {
+      await transaction.storyFeedback.upsert({
         where: {
-          userId_topicId: {
+          userId_storyId: {
             userId,
-            topicId
-          }
-        }
-      });
-
-      const currentPreference = current?.preference || 0;
-
-      const preference = Math.max(
-        -5,
-        Math.min(
-          5,
-          currentPreference + preferenceDelta
-        )
-      );
-
-      await transaction.userPreference.upsert({
-        where: {
-          userId_topicId: {
-            userId,
-            topicId
+            storyId
           }
         },
+
         create: {
           userId,
-          topicId,
-          preference
+          storyId,
+          feedback
         },
+
         update: {
-          preference
+          feedback
         }
       });
+
+      if (preferenceDelta === 0) {
+        return;
+      }
+
+      for (const { topicId } of story.storyTopics) {
+        const current =
+          await transaction.userPreference.findUnique({
+            where: {
+              userId_topicId: {
+                userId,
+                topicId
+              }
+            }
+          });
+
+        const currentPreference =
+          current?.preference || 0;
+
+        const preference =
+          Math.max(
+            -5,
+            Math.min(
+              5,
+              currentPreference +
+                preferenceDelta
+            )
+          );
+
+        await transaction.userPreference.upsert({
+          where: {
+            userId_topicId: {
+              userId,
+              topicId
+            }
+          },
+
+          create: {
+            userId,
+            topicId,
+            preference
+          },
+
+          update: {
+            preference
+          }
+        });
+      }
     }
-  });
+  );
 
   return {
     storyId,
     feedback,
-    previousFeedback: existingFeedback?.feedback || null,
+
+    previousFeedback:
+      existingFeedback?.feedback ||
+      null,
+
     preferenceDelta,
-    topicCount: story.storyTopics.length
+
+    topicCount:
+      story.storyTopics.length
   };
 };
 
@@ -724,23 +1294,33 @@ const getStoryFeedback = async ({
   userId,
   storyId
 }) => {
-  const story = await prisma.story.findUnique({
-    where: { id: storyId },
-    select: { id: true }
-  });
+  const story =
+    await prisma.story.findUnique({
+      where: {
+        id: storyId
+      },
+
+      select: {
+        id: true
+      }
+    });
 
   if (!story) {
-    throw new AppError("Story not found", 404);
+    throw new AppError(
+      "Story not found",
+      404
+    );
   }
 
-  const feedback = await prisma.storyFeedback.findUnique({
-    where: {
-      userId_storyId: {
-        userId,
-        storyId
+  const feedback =
+    await prisma.storyFeedback.findUnique({
+      where: {
+        userId_storyId: {
+          userId,
+          storyId
+        }
       }
-    }
-  });
+    });
 
   return feedback;
 };
@@ -749,14 +1329,15 @@ const removeStoryFeedback = async ({
   userId,
   storyId
 }) => {
-  const existingFeedback = await prisma.storyFeedback.findUnique({
-    where: {
-      userId_storyId: {
-        userId,
-        storyId
+  const existingFeedback =
+    await prisma.storyFeedback.findUnique({
+      where: {
+        userId_storyId: {
+          userId,
+          storyId
+        }
       }
-    }
-  });
+    });
 
   if (!existingFeedback) {
     return {
@@ -766,28 +1347,142 @@ const removeStoryFeedback = async ({
     };
   }
 
-  const story = await prisma.story.findUnique({
-    where: { id: storyId },
-    include: {
-      storyTopics: {
-        select: {
-          topicId: true
+  const story =
+    await prisma.story.findUnique({
+      where: {
+        id: storyId
+      },
+
+      include: {
+        storyTopics: {
+          select: {
+            topicId: true
+          }
         }
       }
-    }
-  });
+    });
 
   if (!story) {
-    throw new AppError("Story not found", 404);
+    throw new AppError(
+      "Story not found",
+      404
+    );
   }
 
   // Removing LIKE removes +1.
   // Removing DISLIKE removes -1, therefore +1.
-  const preferenceDelta =
-    existingFeedback.feedback === "LIKE" ? -1 : 1;
 
-  await prisma.$transaction(async (transaction) => {
-    await transaction.storyFeedback.delete({
+  const preferenceDelta =
+    existingFeedback.feedback === "LIKE"
+      ? -1
+      : 1;
+
+  await prisma.$transaction(
+    async (transaction) => {
+      await transaction.storyFeedback.delete({
+        where: {
+          userId_storyId: {
+            userId,
+            storyId
+          }
+        }
+      });
+
+      for (const { topicId } of story.storyTopics) {
+        const current =
+          await transaction.userPreference.findUnique({
+            where: {
+              userId_topicId: {
+                userId,
+                topicId
+              }
+            }
+          });
+
+        if (!current) {
+          continue;
+        }
+
+        const preference =
+          Math.max(
+            -5,
+            Math.min(
+              5,
+              current.preference +
+                preferenceDelta
+            )
+          );
+
+        await transaction.userPreference.update({
+          where: {
+            userId_topicId: {
+              userId,
+              topicId
+            }
+          },
+
+          data: {
+            preference
+          }
+        });
+      }
+    }
+  );
+
+  return {
+    removed: true,
+    storyId,
+
+    previousFeedback:
+      existingFeedback.feedback,
+
+    preferenceDelta,
+
+    topicCount:
+      story.storyTopics.length
+  };
+};
+
+// ============================================================
+// STORY SKIP
+// ============================================================
+
+const skipStory = async ({
+  userId,
+  storyId
+}) => {
+  // ----------------------------------------------------------
+  // 1. Make sure the story exists
+  // ----------------------------------------------------------
+
+  const story =
+    await prisma.story.findUnique({
+      where: {
+        id: storyId
+      },
+
+      include: {
+        storyTopics: {
+          select: {
+            topicId: true
+          }
+        }
+      }
+    });
+
+  if (!story) {
+    throw new AppError(
+      "Story not found",
+      404
+    );
+  }
+
+  // ----------------------------------------------------------
+  // 2. Check whether the story was already skipped
+  // ----------------------------------------------------------
+
+  const existingSkip =
+    await prisma.storySkip.findUnique({
       where: {
         userId_storyId: {
           userId,
@@ -796,187 +1491,122 @@ const removeStoryFeedback = async ({
       }
     });
 
-    for (const { topicId } of story.storyTopics) {
-      const current = await transaction.userPreference.findUnique({
-        where: {
-          userId_topicId: {
-            userId,
-            topicId
-          }
-        }
-      });
+  // Already skipped → do nothing.
 
-      if (!current) {
-        continue;
-      }
-
-      const preference = Math.max(
-        -5,
-        Math.min(
-          5,
-          current.preference + preferenceDelta
-        )
-      );
-
-      await transaction.userPreference.update({
-        where: {
-          userId_topicId: {
-            userId,
-            topicId
-          }
-        },
-        data: {
-          preference
-        }
-      });
-    }
-  });
-
-  return {
-    removed: true,
-    storyId,
-    previousFeedback: existingFeedback.feedback,
-    preferenceDelta,
-    topicCount: story.storyTopics.length
-  };
-};
-
-const skipStory = async ({
-  userId,
-  storyId
-}) => {
-  // ------------------------------------------------------------
-  // 1. Make sure the story exists
-  // ------------------------------------------------------------
-  const story = await prisma.story.findUnique({
-    where: {
-      id: storyId
-    },
-    include: {
-      storyTopics: {
-        select: {
-          topicId: true
-        }
-      }
-    }
-  });
-
-  if (!story) {
-    throw new AppError("Story not found", 404);
-  }
-
-  // ------------------------------------------------------------
-  // 2. Check whether the story was already skipped
-  // ------------------------------------------------------------
-  const existingSkip = await prisma.storySkip.findUnique({
-    where: {
-      userId_storyId: {
-        userId,
-        storyId
-      }
-    }
-  });
-
-  // Already skipped → do nothing
   if (existingSkip) {
     return {
       skipped: true,
       storyId,
       alreadySkipped: true,
       preferenceDelta: 0,
-      topicCount: story.storyTopics.length
+      topicCount:
+        story.storyTopics.length
     };
   }
 
-  // ------------------------------------------------------------
+  // ----------------------------------------------------------
   // 3. Skip signal
   //
-  // A skip is a weak negative signal.
-  // Unlike DISLIKE (-1), we use -1 here as well because
-  // the user explicitly rejected the story.
-  // ------------------------------------------------------------
+  // A skip is a negative recommendation signal.
+  // ----------------------------------------------------------
+
   const preferenceDelta = -1;
 
-  // ------------------------------------------------------------
+  // ----------------------------------------------------------
   // 4. Store skip + update topic preferences atomically
-  // ------------------------------------------------------------
-  await prisma.$transaction(async (transaction) => {
-    await transaction.storySkip.create({
-      data: {
-        userId,
-        storyId
-      }
-    });
+  // ----------------------------------------------------------
 
-    for (const { topicId } of story.storyTopics) {
-      const current = await transaction.userPreference.findUnique({
-        where: {
-          userId_topicId: {
-            userId,
-            topicId
-          }
-        }
-      });
-
-      const preference = Math.max(
-        -5,
-        (current?.preference || 0) + preferenceDelta
-      );
-
-      await transaction.userPreference.upsert({
-        where: {
-          userId_topicId: {
-            userId,
-            topicId
-          }
-        },
-        create: {
+  await prisma.$transaction(
+    async (transaction) => {
+      await transaction.storySkip.create({
+        data: {
           userId,
-          topicId,
-          preference
-        },
-        update: {
-          preference
+          storyId
         }
       });
+
+      for (const { topicId } of story.storyTopics) {
+        const current =
+          await transaction.userPreference.findUnique({
+            where: {
+              userId_topicId: {
+                userId,
+                topicId
+              }
+            }
+          });
+
+        const preference =
+          Math.max(
+            -5,
+            (current?.preference || 0) +
+              preferenceDelta
+          );
+
+        await transaction.userPreference.upsert({
+          where: {
+            userId_topicId: {
+              userId,
+              topicId
+            }
+          },
+
+          create: {
+            userId,
+            topicId,
+            preference
+          },
+
+          update: {
+            preference
+          }
+        });
+      }
     }
-  });
+  );
 
   return {
     skipped: true,
     storyId,
     alreadySkipped: false,
     preferenceDelta,
-    topicCount: story.storyTopics.length
+
+    topicCount:
+      story.storyTopics.length
   };
 };
 
-// FIX: Moved getStorySkip outside of skipStory
 const getStorySkip = async ({
   userId,
   storyId
 }) => {
-  const story = await prisma.story.findUnique({
-    where: {
-      id: storyId
-    },
-    select: {
-      id: true
-    }
-  });
+  const story =
+    await prisma.story.findUnique({
+      where: {
+        id: storyId
+      },
+
+      select: {
+        id: true
+      }
+    });
 
   if (!story) {
-    throw new AppError("Story not found", 404);
+    throw new AppError(
+      "Story not found",
+      404
+    );
   }
 
-  const skip = await prisma.storySkip.findUnique({
-    where: {
-      userId_storyId: {
-        userId,
-        storyId
+  const skip =
+    await prisma.storySkip.findUnique({
+      where: {
+        userId_storyId: {
+          userId,
+          storyId
+        }
       }
-    }
-  });
+    });
 
   return skip;
 };
@@ -985,14 +1615,15 @@ const removeStorySkip = async ({
   userId,
   storyId
 }) => {
-  const existingSkip = await prisma.storySkip.findUnique({
-    where: {
-      userId_storyId: {
-        userId,
-        storyId
+  const existingSkip =
+    await prisma.storySkip.findUnique({
+      where: {
+        userId_storyId: {
+          userId,
+          storyId
+        }
       }
-    }
-  });
+    });
 
   if (!existingSkip) {
     return {
@@ -1002,86 +1633,106 @@ const removeStorySkip = async ({
     };
   }
 
-  const story = await prisma.story.findUnique({
-    where: {
-      id: storyId
-    },
-    include: {
-      storyTopics: {
-        select: {
-          topicId: true
-        }
-      }
-    }
-  });
-
-  if (!story) {
-    throw new AppError("Story not found", 404);
-  }
-
-  // Removing a -1 skip restores +1.
-  const preferenceDelta = 1;
-
-  await prisma.$transaction(async (transaction) => {
-    await transaction.storySkip.delete({
+  const story =
+    await prisma.story.findUnique({
       where: {
-        userId_storyId: {
-          userId,
-          storyId
+        id: storyId
+      },
+
+      include: {
+        storyTopics: {
+          select: {
+            topicId: true
+          }
         }
       }
     });
 
-    for (const { topicId } of story.storyTopics) {
-      const current = await transaction.userPreference.findUnique({
+  if (!story) {
+    throw new AppError(
+      "Story not found",
+      404
+    );
+  }
+
+  // Removing a -1 skip restores +1.
+
+  const preferenceDelta = 1;
+
+  await prisma.$transaction(
+    async (transaction) => {
+      await transaction.storySkip.delete({
         where: {
-          userId_topicId: {
+          userId_storyId: {
             userId,
-            topicId
+            storyId
           }
         }
       });
 
-      if (!current) {
-        continue;
+      for (const { topicId } of story.storyTopics) {
+        const current =
+          await transaction.userPreference.findUnique({
+            where: {
+              userId_topicId: {
+                userId,
+                topicId
+              }
+            }
+          });
+
+        if (!current) {
+          continue;
+        }
+
+        const preference =
+          Math.min(
+            5,
+            current.preference +
+              preferenceDelta
+          );
+
+        await transaction.userPreference.update({
+          where: {
+            userId_topicId: {
+              userId,
+              topicId
+            }
+          },
+
+          data: {
+            preference
+          }
+        });
       }
-
-      const preference = Math.min(
-        5,
-        current.preference + preferenceDelta
-      );
-
-      await transaction.userPreference.update({
-        where: {
-          userId_topicId: {
-            userId,
-            topicId
-          }
-        },
-        data: {
-          preference
-        }
-      });
     }
-  });
+  );
 
   return {
     removed: true,
     storyId,
     preferenceDelta,
-    topicCount: story.storyTopics.length
+
+    topicCount:
+      story.storyTopics.length
   };
 };
+
+// ============================================================
+// EXPORTS
+// ============================================================
 
 module.exports = {
   getTopics,
   getPreferences,
   replacePreferences,
+
   getPersonalizedFeed,
   recordReading,
-  
+
   followTopic,
   unfollowTopic,
+
   getSourcePreferences,
   followSource,
   unfollowSource,
@@ -1090,8 +1741,11 @@ module.exports = {
   getStoryFeedback,
   removeStoryFeedback,
 
-  // FIX: Added the missing exports for story skips
   skipStory,
   getStorySkip,
-  removeStorySkip
+  removeStorySkip,
+
+  // Cluster-aware feed helpers
+  diversifyByCluster,
+  applyClusterDiminishingReturns
 };

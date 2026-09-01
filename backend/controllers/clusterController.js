@@ -11,3 +11,14 @@ exports.getCluster = asyncHandler(async (req, res) => {
   const result = await clusterService.getCluster(req.params.id);
   return ApiResponse.success(res, result, "Story cluster fetched successfully");
 });
+
+
+exports.getRelatedStories = asyncHandler(async (req, res) => {
+  const result = await clusterService.getRelatedStories(req.params.id);
+
+  return ApiResponse.success(
+    res,
+    result,
+    "Related stories fetched successfully"
+  );
+});

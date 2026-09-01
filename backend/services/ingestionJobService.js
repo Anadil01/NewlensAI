@@ -1,6 +1,9 @@
-const ingestionQueue = require("../queues/ingestionQueue");
+const getIngestionQueue = () =>
+  require("../queues/ingestionQueue");
 
 const enqueueIngestion = async (triggeredBy) => {
+  const ingestionQueue = getIngestionQueue();
+
   const job = await ingestionQueue.add(
     "run-ingestion",
     {
