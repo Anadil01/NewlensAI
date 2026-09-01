@@ -58,62 +58,15 @@ const replacePreferences = async (userId, preferences) => {
 // ============================================================
 // CLUSTER-AWARE DIVERSIFICATION
 // ============================================================
-//
-// A cluster represents one real-world news event.
-//
-// Example:
-//
-// Cluster A:
-//   Story A1
-//   Story A2
-//   Story A3
-//
-// Cluster B:
-//   Story B1
-//   Story B2
-//
-// Cluster C:
-//   Story C1
-//
-// Instead of showing:
-//
-//   A1, A2, A3, B1, B2, C1
-//
-// We diversify the feed:
-//
-//   A1, B1, C1, A2, B2, A3
-//
-// This prevents one real-world event from dominating the feed.
-//
-// IMPORTANT:
-// The input is expected to already be sorted by relevanceScore.
-// Therefore, the first story inside each cluster is the strongest
-// story from that cluster.
-//
-// Unclustered stories are treated as individual groups so they
-// are never accidentally merged together.
-// ============================================================
 
 const diversifyByCluster = (stories) => {
   if (!stories.length) {
     return [];
   }
 
-  // ----------------------------------------------------------
-  // Group stories by cluster.
-  //
-  // Map insertion order is important here.
-  // The first time we see a cluster determines the order in
-  // which that cluster participates in diversification.
-  // ----------------------------------------------------------
-
   const clusters = new Map();
 
   for (const story of stories) {
-    // Clustered stories use their real cluster ID.
-    //
-    // Unclustered stories get a unique synthetic ID so that
-    // each unclustered story remains independent.
     const clusterId =
       story.clusterId || `story:${story.id}`;
 
@@ -123,28 +76,6 @@ const diversifyByCluster = (stories) => {
 
     clusters.get(clusterId).push(story);
   }
-
-  // ----------------------------------------------------------
-  // Round-robin through clusters.
-  //
-  // Example:
-  //
-  // cluster-a: [a1, a2, a3]
-  // cluster-b: [b1, b2]
-  // cluster-c: [c1]
-  //
-  // Round 1:
-  //   a1, b1, c1
-  //
-  // Round 2:
-  //   a2, b2
-  //
-  // Round 3:
-  //   a3
-  //
-  // Final:
-  //   a1, b1, c1, a2, b2, a3
-  // ----------------------------------------------------------
 
   const diversified = [];
 
@@ -173,7 +104,6 @@ const diversifyByCluster = (stories) => {
       diversified.push({
         ...story,
 
-        // Useful metadata for the frontend.
         clusterInfo: story.cluster
           ? {
               id: story.cluster.id,
@@ -195,35 +125,11 @@ const diversifyByCluster = (stories) => {
 // ============================================================
 // CLUSTER DIMINISHING RETURNS
 // ============================================================
-//
-// Stories belonging to the same cluster receive progressively
-// smaller relevance multipliers.
-//
-// First story:  1.00
-// Second story: 0.80
-// Third story:  0.65
-// Fourth+:     0.55
-//
-// This does NOT remove stories.
-//
-// It only reduces the score of repeated coverage of the same
-// real-world event.
-//
-// Example:
-//
-// A1 = 10 * 1.00 = 10
-// A2 = 10 * 0.80 = 8
-// A3 = 10 * 0.65 = 6.5
-// A4 = 10 * 0.55 = 5.5
-//
-// Unclustered stories are not penalized.
-// ============================================================
 
 const applyClusterDiminishingReturns = (stories) => {
   const clusterCounts = new Map();
 
   return stories.map((story) => {
-    // Unclustered stories don't compete with each other.
     if (!story.clusterId) {
       return story;
     }
@@ -235,11 +141,6 @@ const applyClusterDiminishingReturns = (stories) => {
       story.clusterId,
       count + 1
     );
-
-    // First story = 100%
-    // Second story = 80%
-    // Third story = 65%
-    // Fourth+ = 55%
 
     let multiplier;
 
@@ -283,6 +184,60 @@ const applyClusterDiminishingReturns = (stories) => {
 };
 
 // ============================================================
+// TOPIC + SOURCE AFFINITY
+// ============================================================
+//
+// Topic affinity:
+//   Measures how strongly the user prefers the topics
+//   attached to a story.
+//
+// Source affinity:
+//   Measures how strongly the user prefers the story's source.
+//
+// Example:
+//
+// User:
+//   AI       = 5
+//   Startups = 3
+//   Reuters  = 4
+//
+// Story:
+//   topics = [AI, Startups]
+//   source = Reuters
+//
+// topicScore  = 5 + 3 = 8
+// sourceScore = 4
+//
+// ============================================================
+
+const calculateAffinityScores = ({
+  story,
+  preferenceByTopic,
+  preferenceBySource
+}) => {
+  const topicScore =
+    story.storyTopics.reduce(
+      (score, { topicId }) => {
+        return (
+          score +
+          (preferenceByTopic.get(topicId) || 0)
+        );
+      },
+      0
+    );
+
+  const sourceScore =
+    preferenceBySource.get(
+      story.sourceId
+    ) || 0;
+
+  return {
+    topicScore,
+    sourceScore
+  };
+};
+
+// ============================================================
 // PERSONALIZED FEED
 // ============================================================
 
@@ -310,8 +265,6 @@ const getPersonalizedFeed = async ({
 
   // ============================================================
   // 2. GET USER SOURCE PREFERENCES
-  //
-  // Source preferences only affect personalized mode.
   // ============================================================
 
   const sourcePreferences =
@@ -337,8 +290,6 @@ const getPersonalizedFeed = async ({
 
   // ============================================================
   // 3. GET SKIPPED STORIES
-  //
-  // Skipped stories never appear in any feed mode.
   // ============================================================
 
   const skippedStories =
@@ -429,10 +380,6 @@ const getPersonalizedFeed = async ({
         }
       }));
 
-    // ----------------------------------------------------------
-    // Latest feed is primarily chronological.
-    // ----------------------------------------------------------
-
     const chronologicalStories =
       latestStories.sort((a, b) => {
         return (
@@ -501,10 +448,6 @@ const getPersonalizedFeed = async ({
                 story.createdAt
             ).getTime();
 
-          // ----------------------------------------------------
-          // Story age in hours.
-          // ----------------------------------------------------
-
           const ageHours =
             Math.max(
               (now - publishedTime) /
@@ -512,21 +455,9 @@ const getPersonalizedFeed = async ({
               0
             );
 
-          // ----------------------------------------------------
-          // Recency decay.
-          //
-          // 0 hours  -> 1.00
-          // 24 hours -> 0.50
-          // 48 hours -> ~0.33
-          // ----------------------------------------------------
-
           const recencyMultiplier =
             1 /
             (1 + ageHours / 24);
-
-          // ----------------------------------------------------
-          // Popularity.
-          // ----------------------------------------------------
 
           const popularityScore =
             Math.min(
@@ -565,10 +496,6 @@ const getPersonalizedFeed = async ({
           };
         })
 
-        // ------------------------------------------------------
-        // Highest trending score first.
-        // ------------------------------------------------------
-
         .sort((a, b) => {
           if (
             b.relevanceScore !==
@@ -592,9 +519,9 @@ const getPersonalizedFeed = async ({
           );
         });
 
-    // ----------------------------------------------------------
+    // ============================================================
     // CLUSTER DIVERSIFICATION
-    // ----------------------------------------------------------
+    // ============================================================
 
     const diversifiedTrending =
       diversifyByCluster(
@@ -649,32 +576,17 @@ const getPersonalizedFeed = async ({
     eligibleStories
       .map((story) => {
         // ------------------------------------------------------
-        // TOPIC SCORE
+        // TOPIC + SOURCE AFFINITY
         // ------------------------------------------------------
 
-        const topicScore =
-          story.storyTopics.reduce(
-            (score, { topicId }) => {
-              return (
-                score +
-                (
-                  preferenceByTopic.get(
-                    topicId
-                  ) || 0
-                )
-              );
-            },
-            0
-          );
-
-        // ------------------------------------------------------
-        // SOURCE SCORE
-        // ------------------------------------------------------
-
-        const sourceScore =
-          preferenceBySource.get(
-            story.sourceId
-          ) || 0;
+        const {
+          topicScore,
+          sourceScore
+        } = calculateAffinityScores({
+          story,
+          preferenceByTopic,
+          preferenceBySource
+        });
 
         // ------------------------------------------------------
         // POPULARITY SCORE
@@ -766,9 +678,9 @@ const getPersonalizedFeed = async ({
       scoredStories
     );
 
-  // ------------------------------------------------------------
-  // Re-sort after applying diminishing returns.
-  // ------------------------------------------------------------
+  // ============================================================
+  // RE-SORT AFTER DIMINISHING RETURNS
+  // ============================================================
 
   const rerankedStories =
     clusterAdjustedStories.sort(
@@ -798,11 +710,6 @@ const getPersonalizedFeed = async ({
 
   // ============================================================
   // CLUSTER-AWARE DIVERSIFICATION
-  //
-  // IMPORTANT:
-  // This does NOT remove duplicate cluster stories.
-  //
-  // It spreads them throughout the feed.
   // ============================================================
 
   const diversifiedStories =
@@ -890,12 +797,6 @@ const recordReading = async ({
       404
     );
   }
-
-  // Completing a story is a stronger signal than simply
-  // opening it.
-  //
-  // A short read does not change recommendations, preventing
-  // accidental taps from distorting the feed.
 
   const affinityDelta =
     completed
@@ -1188,7 +1089,6 @@ const setStoryFeedback = async ({
       }
     });
 
-  // Convert feedback into its recommendation signal.
   const signal =
     feedback === "LIKE"
       ? 1
@@ -1369,9 +1269,6 @@ const removeStoryFeedback = async ({
     );
   }
 
-  // Removing LIKE removes +1.
-  // Removing DISLIKE removes -1, therefore +1.
-
   const preferenceDelta =
     existingFeedback.feedback === "LIKE"
       ? -1
@@ -1451,10 +1348,6 @@ const skipStory = async ({
   userId,
   storyId
 }) => {
-  // ----------------------------------------------------------
-  // 1. Make sure the story exists
-  // ----------------------------------------------------------
-
   const story =
     await prisma.story.findUnique({
       where: {
@@ -1477,10 +1370,6 @@ const skipStory = async ({
     );
   }
 
-  // ----------------------------------------------------------
-  // 2. Check whether the story was already skipped
-  // ----------------------------------------------------------
-
   const existingSkip =
     await prisma.storySkip.findUnique({
       where: {
@@ -1490,8 +1379,6 @@ const skipStory = async ({
         }
       }
     });
-
-  // Already skipped → do nothing.
 
   if (existingSkip) {
     return {
@@ -1504,17 +1391,7 @@ const skipStory = async ({
     };
   }
 
-  // ----------------------------------------------------------
-  // 3. Skip signal
-  //
-  // A skip is a negative recommendation signal.
-  // ----------------------------------------------------------
-
   const preferenceDelta = -1;
-
-  // ----------------------------------------------------------
-  // 4. Store skip + update topic preferences atomically
-  // ----------------------------------------------------------
 
   await prisma.$transaction(
     async (transaction) => {
@@ -1655,8 +1532,6 @@ const removeStorySkip = async ({
     );
   }
 
-  // Removing a -1 skip restores +1.
-
   const preferenceDelta = 1;
 
   await prisma.$transaction(
@@ -1729,6 +1604,9 @@ module.exports = {
 
   getPersonalizedFeed,
   recordReading,
+
+  // Personalization affinity
+  calculateAffinityScores,
 
   followTopic,
   unfollowTopic,

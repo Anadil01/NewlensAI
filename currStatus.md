@@ -36,22 +36,6 @@ Priority order I’d use:
 
 
 
-Phase 2.2 — Cluster-aware scoring
-Instead of only spreading clusters apart, make the feed understand:
-User likes topic
-        +
-User likes source
-        +
-Story is popular
-        +
-Story belongs to an important cluster
-        +
-Story is recent
-        ↓
-Final personalized ranking
-
-
-
 Current position
 Completed / solid
 - React + Express + PostgreSQL + Python architecture
