@@ -1,36 +1,73 @@
-import API from "../api/axios";
 import { useAuth } from "../context/useAuth";
-import { useToast } from "../context/useToast";
+import { useBookmarks } from "../hooks/useBookmarks";
+import { useToggleBookmark } from "../hooks/useToggleBookmark";
 
-const StoryCard = ({
-  story,
-  isBookmarked = false,
-  onBookmarkChange
-}) => {
+const readHost = (url) => {
+  if (!url) {
+    return "Unknown source";
+  }
+
+  try {
+    return new URL(url).hostname.replace("www.", "");
+  } catch {
+    return "Unknown source";
+  }
+};
+
+const formatPublishedAt = (publishedAt) => {
+  if (!publishedAt) {
+    return "Fresh";
+  }
+
+  const publishedDate = new Date(publishedAt);
+
+  if (Number.isNaN(publishedDate.getTime())) {
+    return "Fresh";
+  }
+
+  const elapsedMinutes = Math.round(
+    (Date.now() - publishedDate.getTime()) / 60000
+  );
+
+  if (elapsedMinutes < 1) {
+    return "Just now";
+  }
+
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes}m ago`;
+  }
+
+  const elapsedHours = Math.round(elapsedMinutes / 60);
+
+  if (elapsedHours < 24) {
+    return `${elapsedHours}h ago`;
+  }
+
+  const elapsedDays = Math.round(elapsedHours / 24);
+
+  if (elapsedDays < 7) {
+    return `${elapsedDays}d ago`;
+  }
+
+  return publishedDate.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric"
+  });
+};
+
+const StoryCard = ({ story }) => {
   const { user } = useAuth();
-  const toast = useToast();
-  const host = story.url
-    ? new URL(
-        story.url,
-        "https://news.ycombinator.com"
-      ).hostname.replace("www.", "")
-    : "news.ycombinator.com";
 
-  const bookmarkStory = async () => {
-    try {
-      const { data } = await API.post(
-        `/stories/${story._id}/bookmark`
-      );
+  // Both hooks share one cache entry, so rendering a grid of cards
+  // still results in a single /bookmarks request.
+  const { data: bookmarkedStories = [] } = useBookmarks();
+  const toggleBookmark = useToggleBookmark();
 
-      toast.success(data.message || "Bookmark updated");
-      onBookmarkChange?.(data);
-    } catch (error) {
-      toast.error(
-        error.response?.data?.message ||
-          "Bookmark action failed."
-      );
-    }
-  };
+  const host = readHost(story.canonicalUrl);
+  const publishedLabel = formatPublishedAt(story.publishedAt);
+  const isBookmarked = bookmarkedStories.some(
+    (bookmarkedStory) => bookmarkedStory.id === story.id
+  );
 
   return (
     <article className="group flex h-full flex-col rounded-[28px] border border-stroke bg-card p-6 shadow-[0_24px_80px_rgba(15,23,42,0.06)] backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:shadow-[0_30px_90px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-slate-900/80">
@@ -39,7 +76,7 @@ const StoryCard = ({
           {host}
         </span>
         <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
-          {story.postedAt || "Fresh"}
+          {publishedLabel}
         </span>
       </div>
 
@@ -59,7 +96,7 @@ const StoryCard = ({
       <div className="mt-6 flex flex-1 items-end">
         <div className="flex w-full flex-col gap-3 sm:flex-row">
           <a
-            href={story.url}
+            href={story.canonicalUrl}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
@@ -70,10 +107,15 @@ const StoryCard = ({
           {user && (
             <button
               type="button"
-              onClick={bookmarkStory}
-              className="inline-flex items-center justify-center rounded-full border border-stroke bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-amber-300 hover:bg-amber-50 hover:text-signal-deep dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+              onClick={() => toggleBookmark.mutate(story.id)}
+              disabled={toggleBookmark.isPending}
+              className="inline-flex items-center justify-center rounded-full border border-stroke bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-amber-300 hover:bg-amber-50 hover:text-signal-deep disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
             >
-              {isBookmarked ? "Remove bookmark" : "Save bookmark"}
+              {toggleBookmark.isPending
+                ? "Saving..."
+                : isBookmarked
+                  ? "Remove bookmark"
+                  : "Save bookmark"}
             </button>
           )}
         </div>

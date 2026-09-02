@@ -1,77 +1,37 @@
-import {
-  useEffect,
-  useState
-} from "react";
+import { useState } from "react";
 
-import API from "../api/axios";
 import LoadingSpinner from "../components/LoadingSpinner";
 import PaginationControls from "../components/PaginationControls";
 import StoryCard from "../components/StoryCard";
+import { useStories } from "../hooks/useStories";
 
 const PAGE_SIZE = 6;
 
 const Home = () => {
-  const [stories, setStories] = useState([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [pagination, setPagination] = useState({
-    page: 1,
-    totalPages: 1,
-    total: 0
+  const [page, setPage] = useState(1);
+
+  const { data, isPending } = useStories({
+    page,
+    limit: PAGE_SIZE,
+    search: searchQuery
   });
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchStories = async () => {
-      try {
-        setIsLoading(true);
-
-        const { data } = await API.get("/stories", {
-          params: {
-            page: pagination.page,
-            limit: PAGE_SIZE,
-            search: searchQuery || undefined
-          }
-        });
-
-        setStories(data.stories);
-        setPagination((currentPagination) => ({
-          ...currentPagination,
-          ...data.pagination
-        }));
-      } catch (error) {
-        console.log(error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchStories();
-  }, [pagination.page, searchQuery]);
+  const stories = data?.stories ?? [];
+  const total = data?.pagination?.total ?? 0;
+  const totalPages = data?.pagination?.totalPages ?? 1;
 
   const handleSearchSubmit = (event) => {
     event.preventDefault();
-    setPagination((currentPagination) => ({
-      ...currentPagination,
-      page: 1
-    }));
+    setPage(1);
     setSearchQuery(searchInput.trim());
   };
 
   const handleClearSearch = () => {
     setSearchInput("");
     setSearchQuery("");
-    setPagination((currentPagination) => ({
-      ...currentPagination,
-      page: 1
-    }));
-  };
-
-  const handlePageChange = (page) => {
-    setPagination((currentPagination) => ({
-      ...currentPagination,
-      page
-    }));
+    setPage(1);
   };
 
   return (
@@ -90,7 +50,7 @@ const Home = () => {
           </p>
           <div className="flex flex-wrap gap-3 pt-2 text-sm text-slate-600 dark:text-slate-300">
             <span className="rounded-full bg-white px-4 py-2 ring-1 ring-stroke dark:bg-slate-900 dark:text-slate-200 dark:ring-white/10">
-              {pagination.total} matching stories
+              {total} matching stories
             </span>
             <span className="rounded-full bg-white px-4 py-2 ring-1 ring-stroke dark:bg-slate-900 dark:text-slate-200 dark:ring-white/10">
               Ranked by points
@@ -132,7 +92,7 @@ const Home = () => {
         </form>
       </div>
 
-      {isLoading ? (
+      {isPending ? (
         <LoadingSpinner label="Loading stories..." />
       ) : stories.length === 0 ? (
         <div className="rounded-[28px] border border-dashed border-stroke bg-white/70 p-10 text-center shadow-sm dark:border-white/10 dark:bg-slate-900/70">
@@ -149,16 +109,16 @@ const Home = () => {
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {stories.map((story) => (
               <StoryCard
-                key={story._id}
+                key={story.id}
                 story={story}
               />
             ))}
           </div>
 
           <PaginationControls
-            page={pagination.page}
-            totalPages={pagination.totalPages}
-            onPageChange={handlePageChange}
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
           />
         </>
       )}

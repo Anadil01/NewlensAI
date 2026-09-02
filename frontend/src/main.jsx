@@ -1,7 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { QueryClientProvider } from "@tanstack/react-query";
 
 import App from "./App";
+import queryClient from "./api/queryClient";
 
 import "./index.css";
 
@@ -18,7 +20,9 @@ ReactDOM.createRoot(
     <ThemeProvider>
       <ToastProvider>
         <AuthProvider>
-          <App />
+          <QueryClientProvider client={queryClient}>
+            <App />
+          </QueryClientProvider>
         </AuthProvider>
       </ToastProvider>
     </ThemeProvider>

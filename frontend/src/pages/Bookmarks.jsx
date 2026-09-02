@@ -1,46 +1,16 @@
-import {
-  useEffect,
-  useState
-} from "react";
 import { Link } from "react-router-dom";
 
-import API from "../api/axios";
 import LoadingSpinner from "../components/LoadingSpinner";
 import StoryCard from "../components/StoryCard";
 import { useAuth } from "../context/useAuth";
+import { useBookmarks } from "../hooks/useBookmarks";
 
 const Bookmarks = () => {
   const { user } = useAuth();
-  const [stories, setStories] = useState([]);
-  const [isLoading, setIsLoading] = useState(Boolean(user));
 
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-
-    const fetchBookmarks = async () => {
-      try {
-        const { data } = await API.get("/bookmarks");
-
-        setStories(data);
-      } catch (error) {
-        console.log(error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchBookmarks();
-  }, [user]);
-
-  const handleBookmarkChange = (storyId) => {
-    setStories((currentStories) =>
-      currentStories.filter(
-        (story) => story._id !== storyId
-      )
-    );
-  };
+  // Disabled while signed out, so isPending stays true without a request;
+  // the !user branch below renders first in that case.
+  const { data: stories = [], isPending } = useBookmarks();
 
   return (
     <section className="space-y-8">
@@ -81,7 +51,7 @@ const Bookmarks = () => {
             Go to login
           </Link>
         </div>
-      ) : isLoading ? (
+      ) : isPending ? (
         <LoadingSpinner label="Loading bookmarks..." />
       ) : stories.length === 0 ? (
         <div className="rounded-[28px] border border-dashed border-stroke bg-white/70 p-10 text-center shadow-sm dark:border-white/10 dark:bg-slate-900/70">
@@ -102,12 +72,8 @@ const Bookmarks = () => {
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {stories.map((story) => (
             <StoryCard
-              key={story._id}
+              key={story.id}
               story={story}
-              isBookmarked
-              onBookmarkChange={() =>
-                handleBookmarkChange(story._id)
-              }
             />
           ))}
         </div>
