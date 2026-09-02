@@ -1,4 +1,4 @@
-# Frontend
+# NewsLensAI — Frontend
 
 React 19 + Vite 8 + Tailwind 4. Design is settled — we improve it one step at a time,
 verifying each step with `npm run lint` and `npm run build` before moving on.

@@ -61,7 +61,7 @@ const Register = () => {
           Create account
         </h2>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-          Start saving the best Hacker News finds in one place.
+          Start saving the stories worth keeping, all in one place.
         </p>
 
         <form

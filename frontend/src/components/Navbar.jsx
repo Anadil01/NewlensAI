@@ -22,12 +22,12 @@ const Navbar = () => {
           className="group flex items-center gap-3"
         >
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-linear-to-br from-amber-500 via-orange-500 to-teal-700 text-lg font-black text-white shadow-lg shadow-amber-900/20">
-            HN
+            NL
           </div>
 
           <div>
             <p className="text-lg font-extrabold tracking-tight text-slate-950 dark:text-white">
-              Insight Hub
+              NewsLens AI
             </p>
             <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
               Signals over noise
