@@ -56,6 +56,23 @@
                     React Frontend
 
 
+## Running the tests
+
+From the `ingestion/` directory:
+
+```bash
+./venv/bin/python -m pytest
+```
+
+Configuration lives in `pytest.ini`. Collection is scoped to `tests/` on purpose:
+`scripts/` contains files named `test_*.py` that are **manual verification scripts**, not
+automated tests — several make live API calls or connect to a real database at import time.
+Run those individually when you actually want them, e.g.:
+
+```bash
+./venv/bin/python -m scripts.test_newsapi
+```
+
 # Why did you create a separate NewsAPI client?
 
 "I separated external API communication from the ingestion business logic. The NewsAPI client is responsible only for communicating with NewsAPI, handling request configuration and API errors. This keeps the ingestion pipeline loosely coupled and makes it easier to add other sources later."

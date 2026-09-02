@@ -1,345 +1,240 @@
-Backend and ingestion are a solid prototype foundation, but the roadmap is not yet complete. The current labels should be adjusted as follows.
-Areas	Audit status	Evidence / gap
-1–2. Project understanding, architecture	✅	Clear React / Express / PostgreSQL / Python-ingestion split.
-3. Configuration	✅	Config exists, but [.env.example](/Users/anadilgazi/Desktop/ANADIL/My Dev Project/NewslensAI/backend/.env.example) is stale (MONGO_URI) and omits PostgreSQL, Redis, Elasticsearch, and AI variables.
-4–6. Errors, controllers, validation	✅	Central error handler, service/controller split, and Zod validation exist. Search query is manually validated rather than using the shared validation layer.
-7. Authentication/security	✅	JWT, bcrypt, Helmet, and auth rate limiting exist. No Google OAuth, token rotation/revocation, account recovery, or global API limits.
-8. API responses	✅	ApiResponse is consistently used by the visible API controllers.
-9. Service/business layer	✅	Auth, story, bookmark, search, cache, persistence, and job services exist.
-10–12. Database/PostgreSQL/Prisma	✅	PostgreSQL schema, Prisma client, migrations, integrity checks, and relationships are implemented.
-13. DB indexing/optimization	✅	Important indexes exist, but feed ordering by points has no matching composite index and pagination remains offset-based.
-14. Redis	✅	Redis clients, cache helpers, and BullMQ connection exist; environment validation and operational resilience need work.
-15. Elasticsearch	✅	Index creation, per-story indexing, bulk indexing, and search API are implemented.
-16. Scraping architecture	✅	Registry, validation, normalization, persistence, Hacker News, and NewsAPI exist—but this is two sources, not the planned 100+.
-17. Background jobs/queues	✅	BullMQ worker, retries, and admin trigger exist. Critical: the worker runs run_pipeline.py, but that pipeline does not call run_all_sources(), so queued jobs enrich existing records without first scraping/persisting new stories.
-18. AI pipeline	✅	Extraction, OpenRouter summarization, topic classification, clustering, and bias stages exist. No durable stage/job state, dead-letter/retry policy at stage level, or live end-to-end environment verification.
-19. Personalization	⏳	Schema supports preferences and reading history, but there are no APIs, ranking logic, onboarding, or feedback signals.
-20. Story clustering	🟡	Clustering, embeddings, persistence, and tests now exist. Missing user-facing multi-source story endpoints/views and live database verification.
-21. Bias system	🟡	A per-article word-list tone detector exists. It is not the requested political/source-bias system; no AllSides/Ad Fontes data, lean labels, or source trust score.
-22. Caching	🟡	Story-list caching is implemented, but cache invalidation is not called after story persistence, so cached feeds can become stale.
-23. Security hardening	🟡	Baseline middleware is present; production controls are incomplete.
-24. Logging/monitoring	🟡	Console logs, health endpoint, and pipeline timing exist. No structured logs, metrics backend, tracing, alerting, or error reporting.
-25. Testing	🟡	Many manual scripts and a small unittest suite exist. No automated backend test runner, integration test stack, coverage, or CI.
-26. Docker	⏳	No Dockerfile or Compose configuration found.
-27. AWS deployment	⏳	No deployment/IaC configuration found.
-28. Production optimization	⏳	Not yet implemented as a defined stage.
-29. Frontend improvements	Not audited	Your request scoped this check to backend and ingestion.
+# NewsLensAI — Current Status
 
+**Last audited:** 2 September 2026
+**Scope:** backend + ingestion only. The frontend is deliberately out of scope for this phase.
+**Verification:**
+- `cd backend && npm test` → **186 passing, 0 failing**
+- `cd ingestion && ./venv/bin/python -m pytest` → **6 passing, 0 failing**
 
-Priority order I’d use:
-1. Fix the queue path so it runs source ingestion before enrichment. - ✅
-2. Wire cache invalidation after every story create/update. - ✅
-3. Build personalization APIs/ranking and multi-source cluster APIs. -
-4. Replace simplistic bias detection with source political-lean and reliability data.
-5. Add integration tests, Docker Compose, then deployment/monitoring.
+Legend: 🟢 done and verified · 🟡 partial · 🔴 not started
 
+---
 
+## Snapshot
 
+The backend has moved from "prototype with gaps" to a working product core. Personalization is no
+longer just a schema — it has APIs, a real recommendation engine, and test coverage. The multi-source
+clustering layer is exposed through APIs. The two critical bugs from the last audit (queue path
+skipping source ingestion, and missing cache invalidation) are fixed.
 
-Current position
-Completed / solid
-- React + Express + PostgreSQL + Python architecture
-- JWT authentication + bcrypt + Helmet
-- Error handling, controllers, services, Zod validation
-- PostgreSQL + Prisma + migrations + relationships
-- Redis + BullMQ foundation
-- Elasticsearch indexing/search
-- Hacker News + NewsAPI ingestion
-- Scraping registry/normalization/persistence
-- AI extraction → summarization → classification → clustering → bias stages
-- Story clustering infrastructure
-- Story caching
-- Basic logging/health checks
-Still missing / needs improvement
-1. Personalization — highest product priority
-2. Multi-source story APIs/UI
-3. Real source political-lean + reliability system
-4. Cache invalidation correctness
-5. Automated integration testing
-6. Docker / Compose
-7. Production deployment + AWS
-8. Monitoring/observability
-9. 100+ news sources rather than the current 2
-10. Production optimization/security hardening
-One correction in the audit
-Your priority list says:
-Fix the queue path so it runs source ingestion before enrichment — ✅
-Wire cache invalidation after every story create/update — ✅
+The remaining backend gaps are, in priority order: real source political-lean and reliability data,
+DB-backed integration tests and CI, containerization and deployment, and scaling source coverage
+from 3 adapters toward the 100+ target.
 
-So I will consider both of these fixed unless you tell me otherwise.
-That makes the next major phase:
-Personalization + Story Clustering Product Layer
+---
 
-Rather than spending more time on infrastructure that is already working.
-Recommended development order from here
-PHASE 1 — Personalization
-│
-├── User preferences APIs
-├── Follow/unfollow topics
-├── Follow/unfollow sources
-├── Reading-history tracking
-├── Like/dislike signals
-├── Skip/hide signals
-├── Recommendation scoring
-├── Personalized feed
-└── Trending / Latest feed modes
+## Status by area
 
-PHASE 2 — Story Clustering Product Layer
-│
-├── Cluster APIs
-├── Multi-source story endpoint
-├── Related articles
-├── Source comparison
-├── Cluster summary
-└── Frontend multi-source view
+| # | Area | Status | Evidence / remaining gap |
+|---|------|--------|--------------------------|
+| 1–2 | Project understanding, architecture | 🟢 | Clean React / Express / PostgreSQL / Python-ingestion split. |
+| 3 | Configuration | 🟢 | **Changed from 🟡.** `config/env.js` validates required vars at boot. `.env.example` now matches what the code actually reads: `MONGO_URI` removed; `DATABASE_URL`, `ELASTICSEARCH_URL`, `NEWS_API_KEY`, `OPENROUTER_API_KEY`, `PYTHON_BIN` added. |
+| 4–6 | Errors, controllers, validation | 🟢 | Central error handler, service/controller split, Zod schemas per route. Search query is still hand-validated instead of using the shared validation layer. |
+| 7 | Authentication / security | 🟢 | JWT, bcrypt, Helmet, auth + global `/api` rate limiting. No Google OAuth, token rotation/revocation, or account recovery. |
+| 8 | API responses | 🟢 | `ApiResponse` used consistently across controllers. |
+| 9 | Service / business layer | 🟢 | auth, story, bookmark, search, cache, persistence, cluster, personalization, job services. |
+| 10–12 | Database / PostgreSQL / Prisma | 🟢 | Schema, migrations, relationships, unique constraints, integrity checks in place. |
+| 13 | DB indexing / optimization | 🟡 | Core indexes exist. Feed ordering by `points` still has no matching composite index; pagination is offset-based. |
+| 14 | Redis | 🟢 | Redis clients, cache helpers, BullMQ connection. Operational resilience (reconnect/backoff policy, env validation) still thin. |
+| 15 | Elasticsearch | 🟢 | Index creation, per-story indexing, bulk indexing, search API, sync-check script. |
+| 16 | Scraping architecture | 🟢 architecture · 🔴 coverage | Registry, validation, normalization, persistence. **3 adapters**: Hacker News, NewsAPI, RSS. Target is 100+ sources. |
+| 17 | Background jobs / queues | 🟢 | **Previously critical, now fixed.** The pipeline calls `run_all_sources()` before enrichment, with a regression test asserting sources run first. |
+| 18 | AI pipeline | 🟡 | Extraction → OpenRouter summarization → topic classification → clustering → bias stages all exist. No durable per-stage job state, no stage-level dead-letter/retry policy, no live end-to-end verification. |
+| 19 | Personalization | 🟢 | **Changed from ⏳.** Schema, 15 APIs, and a real ranking engine. See detail below. |
+| 20 | Story clustering | 🟢 backend | **Changed from 🟡.** Clustering, embeddings, persistence, plus `GET /clusters`, `GET /clusters/:id`, `GET /stories/:id/related` with validation and controllers. Live-DB verification still pending. |
+| 21 | Bias & reliability | 🟡 | `SourcePoliticalLean` enum (LEFT → RIGHT, UNKNOWN) and `reliabilityScore` exist in schema and are exposed by the cluster API. A per-article word-list tone detector exists. **No AllSides / Ad Fontes data** — repo-wide search found zero references, so lean values are effectively unpopulated. |
+| 22 | Caching | 🟢 | **Changed from 🟡.** `storyPersistenceService` invalidates story caches after persistence, closing the stale-feed hole. |
+| 23 | Security hardening | 🟡 | Baseline middleware present; production controls incomplete. |
+| 24 | Logging / monitoring | 🟡 | Console logs, health endpoint, pipeline timing. No structured logging, metrics backend, tracing, alerting, or error reporting. |
+| 25 | Testing | 🟢 unit · 🟡 integration · 🔴 CI | **Changed from 🟡.** Backend: `npm test` runs `node --test`, 186 tests pass, `supertest` route-level tests exist. Ingestion: `pytest` now runs the suite in one command, 6 tests pass. Missing: DB-backed integration tests, coverage reporting, CI pipeline (no `.github/`). |
+| 26 | Docker | 🔴 | No Dockerfile or Compose configuration. |
+| 27 | AWS deployment | 🔴 | No deployment or IaC configuration. |
+| 28 | Production optimization | 🔴 | Not yet a defined stage. |
+| 29 | Frontend | — | **Out of scope this phase.** Noted below for context only. |
 
-PHASE 3 — Bias & Reliability
-│
-├── Source metadata model
-├── Political lean
-├── Reliability score
-├── AllSides / Ad Fontes data
-├── Source-level bias API
-└── Bias distribution dashboard
+---
 
-PHASE 4 — Testing
-│
-├── API integration tests
-├── DB integration tests
-├── Auth tests
-├── Feed tests
-├── Ingestion tests
-├── AI pipeline tests
-└── CI
+## Personalization detail
 
-PHASE 5 — Production
-│
-├── Docker
-├── Docker Compose
-├── Redis/Elastic/Postgres services
-├── AWS architecture
-├── CI/CD
-├── Structured logging
-├── Metrics
-├── Error tracking
-└── Production security
+### Data model
 
-PHASE 6 — Scale
-│
-├── 100+ sources
-├── Better ranking
-├── Cursor pagination
-├── Composite indexes
-├── Pipeline optimization
-└── Production load testing
-And importantly, I would not build all the advanced features in your original README yet—Fact Check, Journalist Profiles, News Quiz, Offline Reading, monetization, etc. Those are excellent future features, but they can distract from making the core NewsLens product genuinely work end-to-end.
-The core loop we want to achieve first is:
-100+ Sources
+Present in the Prisma schema with unique constraints and indexes:
+`UserPreference`, `UserSourcePreference`, `ReadingHistory`, `StoryFeedback`, `StorySkip`, plus topic
+and source relationships.
+
+### API surface
+
+All routes mount under `/api`. Every personalization route sits behind `protect` via
+`router.use(protect)` in `routes/personalizationRoutes.js`.
+
+```
+GET    /api/feed/personalized          # modes: personalized | latest | trending
+GET    /api/me/preferences
+PUT    /api/me/preferences
+
+POST   /api/stories/:id/reading        # duration + completion
+
+POST   /api/topics/:topicId/follow
+DELETE /api/topics/:topicId/follow
+
+POST   /api/stories/:id/feedback       # LIKE | DISLIKE
+GET    /api/stories/:id/feedback
+DELETE /api/stories/:id/feedback
+
+POST   /api/stories/:id/skip
+GET    /api/stories/:id/skip
+DELETE /api/stories/:id/skip
+
+GET    /api/me/source-preferences
+POST   /api/sources/:sourceId/follow
+DELETE /api/sources/:sourceId/follow
+```
+
+Note: `GET /api/topics` is registered directly in `app.js` *before* the protected router, so it is
+public. Reasonable for a public topic list, but it is an inconsistency worth a deliberate decision.
+
+Validation constrains topic preference values to −5 → +5 and restricts feed mode to the three
+supported values.
+
+### Recommendation engine
+
+The engine lives in `backend/recommendation/` and is no longer the simple
+`topic + source + popularity` sum described in the previous audit:
+
+| Module | Responsibility |
+|--------|----------------|
+| `signals.js` | Builds a user profile from reads, feedback, skips, bookmarks; classifies reads (completed / long / short / bounce) with time decay. |
+| `affinity.js` | Topic and source affinity from explicit preferences blended with behavioural signal. |
+| `quality.js` | Source-level quality contribution. |
+| `penalties.js` | Already-read suppression that recovers as the read ages; dislike and skip demotion. |
+| `normalize.js` | Freshness and popularity normalization, including unknown-popularity fallback. |
+| `score.js` | Weighted combination, cold-start blending via signal strength, deterministic tie-breaking. |
+| `diversify.js` | Cluster capping so one story cluster cannot dominate the feed. |
+| `weights.js` | Central tunable weights. |
+
+Signals now in use: explicit topic preferences, explicit source preferences, reading history as an
+independent ranking signal, likes/dislikes, skips, bookmarks, freshness, popularity, source quality,
+already-read decay, and cluster importance. Every ranked item carries a full explainability
+breakdown (`topicAffinity`, `sourceAffinity`, `popularity`, `penaltyMultiplier`) plus feed-level
+`personalization` metadata.
+
+Feed modes: `personalized` runs the engine; `trending` applies popularity × recency with round-robin
+cluster diversification; `latest` orders by publication/creation time.
+
+Remaining work here is **tuning against real usage data**, not missing signals.
+
+### Test coverage
+
+```
+tests/recommendationSignals.test.js      tests/personalizationRoutes.test.js
+tests/recommendationAffinity.test.js     tests/personalizationSourceRoutes.test.js
+tests/recommendationScore.test.js        tests/personalizationTopics.test.js
+tests/recommendationPenalties.test.js    tests/personalizationFeedback.test.js
+tests/recommendationQuality.test.js      tests/personalizationSkip.test.js
+tests/recommendationNormalize.test.js    tests/personalizationSourcePreferences.test.js
+tests/recommendationDiversify.test.js    tests/personalizationFeedModes.test.js
+tests/personalizedFeed.test.js           tests/personalizationCluster.test.js
+```
+
+---
+
+## Core loop — what is real
+
+```
+Sources (3 adapters — target 100+)        🔴 coverage
       ↓
-Ingestion
+Ingestion (registry, orchestrator)        🟢
       ↓
-Normalize + Deduplicate
+Normalize + Deduplicate                   🟢
       ↓
-PostgreSQL
+PostgreSQL                                🟢
       ↓
-AI Processing
+AI Processing                             🟡 no durable stage state
  ┌────┼─────────┐
  ↓    ↓         ↓
 Summary Topics  Embedding
               ↓
-          Story Clustering
+      Story Clustering                    🟢
               ↓
-       Multi-source Stories
+     Multi-source Story APIs              🟢
               ↓
-      Personalization Engine
+     Personalization Engine               🟢
               ↓
-        Redis Cached Feed
+       Redis Cached Feed                  🟢
               ↓
-          React UI
+           React UI                       out of scope
+```
 
+The backend pipeline is continuous from ingestion through to a cached, ranked, explainable feed.
 
-Phase 1 — Personalization
-We’ll do this incrementally, not try to build the entire recommendation system at once.
-Step 1: audit the existing personalization-related code
-- Prisma User / preferences / reading-history models
-- existing story/topic/source models
-- feed service
-- bookmark/interaction APIs
-- routes/controllers/services
-- current tests
-Then we'll implement:
-User
- ├── preferred topics
- ├── preferred sources
- └── reading history
+---
 
-        ↓
+## Next phases (backend + ingestion)
 
-Personalization APIs
+### Phase A — Bias & Reliability  ← next
+```
+├── Populate source metadata (lean + reliabilityScore)
+├── Ingest AllSides / Ad Fontes ratings
+├── Source-level bias API
+└── Bias distribution over a user's reading history
+```
+This is the highest-value remaining work: the schema and API exposure already exist, so the gap is
+data plus one endpoint. It also unlocks the product's core differentiator.
 
-GET    /api/v1/preferences
-PUT    /api/v1/preferences
-POST   /api/v1/preferences/topics
-DELETE /api/v1/preferences/topics/:topicId
-POST   /api/v1/preferences/sources
-DELETE /api/v1/preferences/sources/:sourceId
-After that:
-preferences
-     +
-reading history
-     +
-likes/dislikes
-     ↓
-ranking algorithm
-     ↓
-personalized feed
-Important: I won't assume your existing schema or invent duplicate models. We should build on what is already in NewsLensAI.
-I need access to the NewsLensAI project files/repository to begin the actual implementation. If the project is connected/uploaded, I can inspect it; otherwise upload the project (or the backend folder) here.
+### Phase B — Testing & CI
+```
+├── DB-backed integration tests (Postgres test database)
+├── Auth + feed + cluster route integration coverage
+├── Ingestion / AI pipeline integration coverage
+├── Coverage reporting
+└── CI pipeline (GitHub Actions)
+```
 
+### Phase C — Containerization & Operations
+```
+├── Dockerfile (backend, worker, ingestion)
+├── Compose: Postgres + Redis + Elasticsearch + worker
+├── Structured logging
+├── Metrics + error tracking
+└── AWS deployment + CI/CD
+```
 
+### Phase D — Scale
+```
+├── Expand RSS source configs toward 100+
+├── Cursor pagination
+├── Composite index for feed ordering by points
+├── Pipeline throughput optimization
+└── Load testing
+```
 
+RSS is the multiplier for source coverage — reaching 100+ is now largely a configuration exercise
+rather than new engineering, which is why it sits last rather than first.
 
- 
+---
 
+## Deferred — not in scope
 
+Explicitly parked until the core backend loop is production-ready:
 
+- Fact-check layer (PolitiFact / Snopes)
+- Reading-time tracker and weekly reading report
+- Weekly email digest (SendGrid)
+- Offline reading and reader-mode caching
+- Journalist profiles
+- News quiz
+- Monetization tiers and the publisher API
+- All frontend work, including the multi-source story view, onboarding, and bias UI
 
+---
 
-next
+## Known debt
 
-
-
-
-
-
-
-
-
-
-
-
-
-I found a README.md in your Library, but it is not NewsLensAI; the search results are matching other projects. I don't have the actual NewsLensAI source files available here, so I can't safely implement the next step without guessing.
-So the next step is simple
-Upload the NewsLensAI project folder/repository here, ideally:
-NewsLensAI/
-├── backend/
-├── ingestion/
-├── frontend/
-└── README.md
-A ZIP is fine too.
-Once it's available, we'll continue directly with:
-Step 1 → Inspect existing Prisma schema and personalization code
-Then:
-User Preferences
-      ↓
-Topics + Sources
-      ↓
-Preference APIs
-      ↓
-Reading History
-      ↓
-Likes / Dislikes
-      ↓
-Recommendation Scoring
-      ↓
-Personalized Feed
-I won't rewrite or redesign your existing backend. We'll build the missing pieces on top of your current architecture, one step at a time.
-
-
-
-
- 
-
-
-
-
-
-next
-
-
-
-
-
-
-
-
-
-
-
-
-
-Okay — next step: Personalization.
-We’ll tackle it in this order:
-Step 1 — Personalization data model
-Verify/complete:
-User
- ├── preferences
- │    ├── topics
- │    └── preferred sources
- │
- ├── reading history
- │    ├── article
- │    ├── read time
- │    └── completion
- │
- ├── feedback
- │    ├── liked
- │    ├── disliked
- │    └── skipped
- │
- └── bookmarks
-Step 2 — APIs
-We'll add:
-GET    /api/preferences
-PUT    /api/preferences
-POST   /api/preferences/topics
-DELETE /api/preferences/topics/:topicId
-
-POST   /api/preferences/sources
-DELETE /api/preferences/sources/:sourceId
-
-POST   /api/reading-history
-GET    /api/reading-history
-
-POST   /api/articles/:id/feedback
-Step 3 — Recommendation engine
-Start simple and explainable:
-article score =
-    topicMatch
-  + sourcePreference
-  + readingHistory
-  + likedTopics
-  - dislikedTopics
-  - alreadyReadPenalty
-  + freshness
-  + popularity
-Then normalize the score and rank the feed.
-Step 4 — Feed modes
-GET /api/feed?mode=personalized
-GET /api/feed?mode=latest
-GET /api/feed?mode=trending
-So the architecture becomes:
-                 ┌──────────────┐
-                 │    User      │
-                 └──────┬───────┘
-                        │
-          ┌─────────────┼─────────────┐
-          ↓             ↓             ↓
-     Preferences   Reading History  Feedback
-          │             │             │
-          └─────────────┼─────────────┘
-                        ↓
-              Recommendation Engine
-                        ↓
-                  Ranked Articles
-                        ↓
-                 Personalized Feed
-After that, we'll move to the other missing priority:
-Story Clusters
-     ↓
-Multi-source APIs
-     ↓
-3–5 articles covering same event
-     ↓
-Frontend multi-source story view
+- ~~`.env.example` is stale~~ — fixed. It now lists every variable the backend and ingestion service actually read, with the boot-time validation rules noted inline.
+- `ingestion/config/sources/failing_test.py` is a deliberate fixture, not a leftover — `registry.py` imports it into `SOURCES` to exercise source-failure isolation. It is guarded by `enabled: False`, so `get_active_sources()` never returns it. Still worth questioning: a test fixture that raises on call sits in the production source registry, protected only by one flag.
+- `ingestion/scripts/` holds 18 `test_*.py` files that are manual `main()` scripts, not automated tests. Some hit live APIs or a real database. `pytest.ini` scopes collection to `tests/` so they are never auto-run, but the naming stays misleading.
+- Feed ordering by `points` has no matching composite index.
+- Pagination is offset-based throughout.
+- Search query validation bypasses the shared Zod layer.
+- No durable per-stage state or dead-letter policy in the AI pipeline.
+- `backend/recommendation/` and the seven `recommendation*.test.js` files are **untracked in git** — the engine is not yet committed.

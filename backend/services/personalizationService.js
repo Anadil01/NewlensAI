@@ -1,19 +1,57 @@
 const prisma = require("../utils/prisma");
 const AppError = require("../utils/AppError");
 
+const {
+  buildUserProfile
+} = require("../recommendation/signals");
+
+const {
+  rankStories
+} = require("../recommendation/score");
+
 const MAX_CANDIDATES = 250;
+
+// Behavioural signal history is decayed by the engine, so an
+// unbounded scan buys very little ranking quality while making
+// the per-request cost grow forever with account age.
+const MAX_SIGNAL_ROWS = 500;
+
+// ============================================================
+// BEHAVIORAL SIGNAL WEIGHTS
+
+// ============================================================
+
+const BEHAVIOR_SIGNAL_WEIGHTS = {
+  LIKE: 1,
+  COMPLETED_READ: 2,
+  LONG_READ: 1,
+  DISLIKE: -1,
+  SKIP: -1
+};
+
+const LONG_READ_SECONDS = 30;
+
+// ============================================================
+// PREFERENCES
+// ============================================================
 
 const getPreferences = async (userId) => {
   return prisma.userPreference.findMany({
     where: { userId },
     include: { topic: true },
-    orderBy: { topic: { name: "asc" } }
+    orderBy: {
+      topic: {
+        name: "asc"
+      }
+    }
   });
 };
 
-const getTopics = async () =>
-  prisma.topic.findMany({
-    orderBy: { name: "asc" },
+const getTopics = async () => {
+  return prisma.topic.findMany({
+    orderBy: {
+      name: "asc"
+    },
     include: {
       _count: {
         select: {
@@ -22,9 +60,19 @@ const getTopics = async () =>
       }
     }
   });
+};
 
 const replacePreferences = async (userId, preferences) => {
   const topicIds = preferences.map(({ topicId }) => topicId);
+
+  const uniqueTopicIds = [...new Set(topicIds)];
+
+  if (uniqueTopicIds.length !== topicIds.length) {
+    throw new AppError(
+      "Duplicate topics are not allowed",
+      400
+    );
+  }
 
   const topicCount = await prisma.topic.count({
     where: {
@@ -35,20 +83,27 @@ const replacePreferences = async (userId, preferences) => {
   });
 
   if (topicCount !== topicIds.length) {
-    throw new AppError("One or more topics do not exist", 400);
+    throw new AppError(
+      "One or more topics do not exist",
+      400
+    );
   }
 
   await prisma.$transaction([
     prisma.userPreference.deleteMany({
-      where: { userId }
+      where: {
+        userId
+      }
     }),
 
     prisma.userPreference.createMany({
-      data: preferences.map(({ topicId, preference }) => ({
-        userId,
-        topicId,
-        preference
-      }))
+      data: preferences.map(
+        ({ topicId, preference }) => ({
+          userId,
+          topicId,
+          preference
+        })
+      )
     })
   ]);
 
@@ -56,7 +111,30 @@ const replacePreferences = async (userId, preferences) => {
 };
 
 // ============================================================
+// SIGNAL QUERY SHAPE
+//
+// The recommendation engine generalizes an interaction from the
+// story it happened on, so every behavioural query has to carry
+// the story's cluster, source and topics with it.
+// ============================================================
+
+const INTERACTION_STORY_SELECT = {
+  select: {
+    id: true,
+    clusterId: true,
+    sourceId: true,
+
+    storyTopics: {
+      select: {
+        topicId: true
+      }
+    }
+  }
+};
+
+// ============================================================
 // CLUSTER-AWARE DIVERSIFICATION
+
 // ============================================================
 
 const diversifyByCluster = (stories) => {
@@ -85,7 +163,8 @@ const diversifyByCluster = (stories) => {
 
   const maxClusterSize = Math.max(
     ...clusterGroups.map(
-      (clusterStories) => clusterStories.length
+      (clusterStories) =>
+        clusterStories.length
     )
   );
 
@@ -108,7 +187,8 @@ const diversifyByCluster = (stories) => {
           ? {
               id: story.cluster.id,
               title: story.cluster.title,
-              description: story.cluster.description
+              description:
+                story.cluster.description
             }
           : null,
 
@@ -123,121 +203,7 @@ const diversifyByCluster = (stories) => {
 };
 
 // ============================================================
-// CLUSTER DIMINISHING RETURNS
-// ============================================================
 
-const applyClusterDiminishingReturns = (stories) => {
-  const clusterCounts = new Map();
-
-  return stories.map((story) => {
-    if (!story.clusterId) {
-      return story;
-    }
-
-    const count =
-      clusterCounts.get(story.clusterId) || 0;
-
-    clusterCounts.set(
-      story.clusterId,
-      count + 1
-    );
-
-    let multiplier;
-
-    if (count === 0) {
-      multiplier = 1;
-    } else if (count === 1) {
-      multiplier = 0.8;
-    } else if (count === 2) {
-      multiplier = 0.65;
-    } else {
-      multiplier = 0.55;
-    }
-
-    const originalScore =
-      story.relevanceScore ?? 0;
-
-    const adjustedScore =
-      originalScore * multiplier;
-
-    return {
-      ...story,
-
-      relevanceScore: Number(
-        adjustedScore.toFixed(3)
-      ),
-
-      scoring: {
-        ...story.scoring,
-
-        clusterDiminishingReturns: {
-          clusterPosition: count + 1,
-          multiplier,
-          originalScore,
-          adjustedScore: Number(
-            adjustedScore.toFixed(3)
-          )
-        }
-      }
-    };
-  });
-};
-
-// ============================================================
-// TOPIC + SOURCE AFFINITY
-// ============================================================
-//
-// Topic affinity:
-//   Measures how strongly the user prefers the topics
-//   attached to a story.
-//
-// Source affinity:
-//   Measures how strongly the user prefers the story's source.
-//
-// Example:
-//
-// User:
-//   AI       = 5
-//   Startups = 3
-//   Reuters  = 4
-//
-// Story:
-//   topics = [AI, Startups]
-//   source = Reuters
-//
-// topicScore  = 5 + 3 = 8
-// sourceScore = 4
-//
-// ============================================================
-
-const calculateAffinityScores = ({
-  story,
-  preferenceByTopic,
-  preferenceBySource
-}) => {
-  const topicScore =
-    story.storyTopics.reduce(
-      (score, { topicId }) => {
-        return (
-          score +
-          (preferenceByTopic.get(topicId) || 0)
-        );
-      },
-      0
-    );
-
-  const sourceScore =
-    preferenceBySource.get(
-      story.sourceId
-    ) || 0;
-
-  return {
-    topicScore,
-    sourceScore
-  };
-};
-
-// ============================================================
 // PERSONALIZED FEED
 // ============================================================
 
@@ -248,48 +214,142 @@ const getPersonalizedFeed = async ({
   mode = "personalized"
 }) => {
   // ============================================================
+  // VALIDATION
+  // ============================================================
+
+  const safePage = Math.max(
+    Number(page) || 1,
+    1
+  );
+
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 10, 1),
+    50
+  );
+
+  const validModes = [
+    "personalized",
+    "latest",
+    "trending"
+  ];
+
+  if (!validModes.includes(mode)) {
+    throw new AppError(
+      "Invalid feed mode",
+      400
+    );
+  }
+
+  // ============================================================
   // 1. GET USER TOPIC PREFERENCES
   // ============================================================
 
   const preferences =
     await getPreferences(userId);
 
-  const preferenceByTopic = new Map(
-    preferences.map(
-      ({ topicId, preference }) => [
-        topicId,
-        preference
-      ]
-    )
-  );
-
   // ============================================================
   // 2. GET USER SOURCE PREFERENCES
   // ============================================================
 
+
   const sourcePreferences =
     mode === "personalized"
-      ? await prisma.userSourcePreference.findMany({
-          where: { userId },
+      ? await prisma.userSourcePreference.findMany(
+          {
+            where: {
+              userId
+            },
+
+            select: {
+              sourceId: true,
+              preference: true
+            }
+          }
+        )
+      : [];
+
+  // ============================================================
+  // 3. GET USER READING HISTORY
+
+  //
+  // Each row carries its story so the engine can generalize the
+  // interaction onto that story's topics, source and cluster.
+  // ============================================================
+
+  const readingHistory =
+    mode === "personalized"
+      ? await prisma.readingHistory.findMany({
+          where: {
+            userId
+          },
 
           select: {
-            sourceId: true,
-            preference: true
-          }
+            storyId: true,
+            openedAt: true,
+            durationSeconds: true,
+            completed: true,
+            story: INTERACTION_STORY_SELECT
+          },
+
+          orderBy: {
+            openedAt: "desc"
+          },
+
+          take: MAX_SIGNAL_ROWS
         })
       : [];
 
-  const preferenceBySource = new Map(
-    sourcePreferences.map(
-      ({ sourceId, preference }) => [
-        sourceId,
-        preference
-      ]
-    )
-  );
+  // ============================================================
+  // 4. GET USER STORY FEEDBACK
+  // ============================================================
+
+  const feedback =
+    mode === "personalized"
+      ? await prisma.storyFeedback.findMany({
+          where: {
+            userId
+          },
+
+          select: {
+            storyId: true,
+            feedback: true,
+            createdAt: true,
+            story: INTERACTION_STORY_SELECT
+          },
+
+          take: MAX_SIGNAL_ROWS
+        })
+      : [];
 
   // ============================================================
-  // 3. GET SKIPPED STORIES
+  // 4b. GET USER BOOKMARKS
+  //
+  // A bookmark is the strongest implicit positive signal we have:
+  // the user chose to come back to this story later.
+  // ============================================================
+
+  const bookmarks =
+    mode === "personalized"
+      ? await prisma.bookmark.findMany({
+          where: {
+            userId
+          },
+
+          select: {
+            storyId: true,
+            createdAt: true,
+            story: INTERACTION_STORY_SELECT
+          },
+
+          take: MAX_SIGNAL_ROWS
+        })
+      : [];
+
+  // ============================================================
+  // 5. GET SKIPPED STORIES
+  //
+  // Skips do double duty: they are hard-filtered out of the
+  // candidate set AND fed to the engine as a negative signal.
   // ============================================================
 
   const skippedStories =
@@ -299,9 +359,12 @@ const getPersonalizedFeed = async ({
       },
 
       select: {
-        storyId: true
+        storyId: true,
+        createdAt: true,
+        story: INTERACTION_STORY_SELECT
       }
     });
+
 
   const skippedStoryIds = new Set(
     skippedStories.map(
@@ -310,7 +373,7 @@ const getPersonalizedFeed = async ({
   );
 
   // ============================================================
-  // 4. FETCH RECENT CANDIDATES
+  // 6. FETCH RECENT CANDIDATES
   // ============================================================
 
   const candidates =
@@ -355,7 +418,7 @@ const getPersonalizedFeed = async ({
     });
 
   // ============================================================
-  // 5. REMOVE SKIPPED STORIES
+  // 7. REMOVE SKIPPED STORIES
   // ============================================================
 
   const eligibleStories =
@@ -397,8 +460,8 @@ const getPersonalizedFeed = async ({
 
     const stories =
       chronologicalStories.slice(
-        (page - 1) * limit,
-        page * limit
+        (safePage - 1) * safeLimit,
+        safePage * safeLimit
       );
 
     return {
@@ -415,19 +478,21 @@ const getPersonalizedFeed = async ({
 
       pagination: {
         total,
-        page,
-        limit,
+        page: safePage,
+        limit: safeLimit,
 
         totalPages: Math.max(
-          Math.ceil(total / limit),
+          Math.ceil(
+            total / safeLimit
+          ),
           1
         ),
 
         hasNextPage:
-          page * limit < total,
+          safePage * safeLimit < total,
 
         hasPreviousPage:
-          page > 1
+          safePage > 1
       }
     };
   }
@@ -533,8 +598,8 @@ const getPersonalizedFeed = async ({
 
     const stories =
       diversifiedTrending.slice(
-        (page - 1) * limit,
-        page * limit
+        (safePage - 1) * safeLimit,
+        safePage * safeLimit
       );
 
     return {
@@ -551,19 +616,21 @@ const getPersonalizedFeed = async ({
 
       pagination: {
         total,
-        page,
-        limit,
+        page: safePage,
+        limit: safeLimit,
 
         totalPages: Math.max(
-          Math.ceil(total / limit),
+          Math.ceil(
+            total / safeLimit
+          ),
           1
         ),
 
         hasNextPage:
-          page * limit < total,
+          safePage * safeLimit < total,
 
         hasPreviousPage:
-          page > 1
+          safePage > 1
       }
     };
   }
@@ -572,163 +639,93 @@ const getPersonalizedFeed = async ({
   // PERSONALIZED MODE
   // ============================================================
 
-  const scoredStories =
-    eligibleStories
-      .map((story) => {
-        // ------------------------------------------------------
-        // TOPIC + SOURCE AFFINITY
-        // ------------------------------------------------------
+  // Explicit preferences arrive from `getPreferences`, which joins
+  // the topic row; the engine only needs the id and weight.
+  const profile = buildUserProfile({
+    nowMs: Date.now(),
 
-        const {
-          topicScore,
-          sourceScore
-        } = calculateAffinityScores({
-          story,
-          preferenceByTopic,
-          preferenceBySource
-        });
-
-        // ------------------------------------------------------
-        // POPULARITY SCORE
-        // ------------------------------------------------------
-
-        const popularityScore =
-          Math.min(
-            Math.max(
-              story.points || 0,
-              0
-            ),
-            1000
-          ) / 1000;
-
-        // ------------------------------------------------------
-        // FINAL RELEVANCE SCORE
-        // ------------------------------------------------------
-
-        const relevanceScore =
-          topicScore +
-          sourceScore +
-          popularityScore;
-
-        return {
-          ...story,
-
-          scoring: {
-            mode: "personalized",
-
-            topicScore,
-
-            sourceScore,
-
-            popularityScore:
-              Number(
-                popularityScore.toFixed(3)
-              )
-          },
-
-          relevanceScore:
-            Number(
-              relevanceScore.toFixed(3)
-            )
-        };
+    topicPreferences: preferences.map(
+      ({ topicId, preference }) => ({
+        topicId,
+        preference
       })
+    ),
 
-      // --------------------------------------------------------
-      // Don't recommend strongly negative stories.
-      // --------------------------------------------------------
-
-      .filter(
-        (story) =>
-          story.relevanceScore >= 0
-      )
-
-      // --------------------------------------------------------
-      // Highest relevance first.
-      // --------------------------------------------------------
-
-      .sort((a, b) => {
-        if (
-          b.relevanceScore !==
-          a.relevanceScore
-        ) {
-          return (
-            b.relevanceScore -
-            a.relevanceScore
-          );
-        }
-
-        return (
-          new Date(
-            b.publishedAt ||
-              b.createdAt
-          ) -
-          new Date(
-            a.publishedAt ||
-              a.createdAt
-          )
-        );
-      });
+    sourcePreferences,
+    readingHistory,
+    feedback,
+    skips: skippedStories,
+    bookmarks
+  });
 
   // ============================================================
-  // CLUSTER-AWARE DIMINISHING RETURNS
+  // RANK
+  //
+  // Diversification is greedy and position-dependent, so a page
+  // cannot be produced in isolation: ranking has to fill every
+  // slot up to the end of the requested page and then slice.
   // ============================================================
 
-  const clusterAdjustedStories =
-    applyClusterDiminishingReturns(
-      scoredStories
-    );
+  const requestedThrough =
+    safePage * safeLimit;
 
-  // ============================================================
-  // RE-SORT AFTER DIMINISHING RETURNS
-  // ============================================================
+  const ranked = rankStories(
+    profile,
+    eligibleStories,
+    {
+      limit: requestedThrough
+    }
+  );
 
-  const rerankedStories =
-    clusterAdjustedStories.sort(
-      (a, b) => {
-        if (
-          b.relevanceScore !==
-          a.relevanceScore
-        ) {
-          return (
-            b.relevanceScore -
-            a.relevanceScore
-          );
-        }
+  const rankedStories =
+    ranked.items.map(
+      ({
+        story,
+        score,
+        breakdown,
+        position,
+        diversity
+      }) => ({
+        ...story,
 
-        return (
-          new Date(
-            b.publishedAt ||
-              b.createdAt
-          ) -
-          new Date(
-            a.publishedAt ||
-              a.createdAt
-          )
-        );
-      }
-    );
+        relevanceScore:
+          Number(score.toFixed(3)),
 
-  // ============================================================
-  // CLUSTER-AWARE DIVERSIFICATION
-  // ============================================================
+        scoring: {
+          mode: "personalized",
+          position,
+          ...breakdown,
+          diversity
+        },
 
-  const diversifiedStories =
-    diversifyByCluster(
-      rerankedStories
+        clusterInfo: story.cluster
+          ? {
+              id: story.cluster.id,
+              title: story.cluster.title,
+              description:
+                story.cluster.description
+            }
+          : null,
+
+        isClusterRepresentative:
+          Boolean(story.clusterId) &&
+          diversity.clusterPlaced === 0
+      })
     );
 
   // ============================================================
   // PAGINATION
+  //
+  // `total` counts everything eligible rather than everything
+  // ranked, so the client sees a stable total while paging.
   // ============================================================
 
-  const total =
-    diversifiedStories.length;
+  const total = ranked.meta.candidateCount;
 
-  const stories =
-    diversifiedStories.slice(
-      (page - 1) * limit,
-      page * limit
-    );
+  const stories = rankedStories.slice(
+    (safePage - 1) * safeLimit,
+    requestedThrough
+  );
 
   // ============================================================
   // RESPONSE
@@ -744,27 +741,50 @@ const getPersonalizedFeed = async ({
       sourcePreferenceCount:
         sourcePreferences.length,
 
-      mode: "personalized"
+      mode: "personalized",
+
+      // Ranking diagnostics: lets the client explain a
+      // still-warming-up feed instead of silently showing a
+      // near-generic ordering.
+      personalized:
+        ranked.meta.personalized,
+
+      coldStart: ranked.meta.coldStart,
+
+      signalCount:
+        ranked.meta.signalCount,
+
+      signalStrength:
+        ranked.meta.signalStrength,
+
+      clusterCount:
+        ranked.meta.clusterCount
     },
 
     pagination: {
       total,
-      page,
-      limit,
+      page: safePage,
+      limit: safeLimit,
 
       totalPages: Math.max(
-        Math.ceil(total / limit),
+        Math.ceil(
+          total / safeLimit
+        ),
         1
       ),
 
       hasNextPage:
-        page * limit < total,
+        requestedThrough <
+        rankedStories.length +
+          (ranked.meta.candidateCount -
+            ranked.meta.returnedCount),
 
       hasPreviousPage:
-        page > 1
+        safePage > 1
     }
   };
 };
+
 
 // ============================================================
 // READING HISTORY
@@ -798,11 +818,18 @@ const recordReading = async ({
     );
   }
 
+  const safeDurationSeconds =
+    Math.max(
+      Number(durationSeconds) || 0,
+      0
+    );
+
   const affinityDelta =
     completed
-      ? 2
-      : durationSeconds >= 30
-        ? 1
+      ? BEHAVIOR_SIGNAL_WEIGHTS.COMPLETED_READ
+      : safeDurationSeconds >=
+        LONG_READ_SECONDS
+        ? BEHAVIOR_SIGNAL_WEIGHTS.LONG_READ
         : 0;
 
   await prisma.$transaction(
@@ -811,8 +838,9 @@ const recordReading = async ({
         data: {
           userId,
           storyId,
-          durationSeconds,
-          completed
+          durationSeconds:
+            safeDurationSeconds,
+          completed: Boolean(completed)
         }
       });
 
@@ -1057,6 +1085,16 @@ const setStoryFeedback = async ({
   storyId,
   feedback
 }) => {
+  if (
+    feedback !== "LIKE" &&
+    feedback !== "DISLIKE"
+  ) {
+    throw new AppError(
+      "Feedback must be LIKE or DISLIKE",
+      400
+    );
+  }
+
   const story =
     await prisma.story.findUnique({
       where: {
@@ -1091,14 +1129,15 @@ const setStoryFeedback = async ({
 
   const signal =
     feedback === "LIKE"
-      ? 1
+      ? BEHAVIOR_SIGNAL_WEIGHTS.LIKE
       : -1;
 
   const previousSignal =
     existingFeedback
-      ? existingFeedback.feedback === "LIKE"
-        ? 1
-        : -1
+      ? existingFeedback.feedback ===
+        "LIKE"
+        ? BEHAVIOR_SIGNAL_WEIGHTS.LIKE
+        : BEHAVIOR_SIGNAL_WEIGHTS.DISLIKE
       : 0;
 
   const preferenceDelta =
@@ -1270,7 +1309,8 @@ const removeStoryFeedback = async ({
   }
 
   const preferenceDelta =
-    existingFeedback.feedback === "LIKE"
+    existingFeedback.feedback ===
+    "LIKE"
       ? -1
       : 1;
 
@@ -1391,7 +1431,8 @@ const skipStory = async ({
     };
   }
 
-  const preferenceDelta = -1;
+  const preferenceDelta =
+    BEHAVIOR_SIGNAL_WEIGHTS.SKIP;
 
   await prisma.$transaction(
     async (transaction) => {
@@ -1605,10 +1646,8 @@ module.exports = {
   getPersonalizedFeed,
   recordReading,
 
-  // Personalization affinity
-  calculateAffinityScores,
-
   followTopic,
+
   unfollowTopic,
 
   getSourcePreferences,
@@ -1623,7 +1662,8 @@ module.exports = {
   getStorySkip,
   removeStorySkip,
 
-  // Cluster-aware feed helpers
-  diversifyByCluster,
-  applyClusterDiminishingReturns
+  // Still used by the trending feed, which is not personalized
+  // and therefore does not go through the recommendation engine.
+  diversifyByCluster
 };
+

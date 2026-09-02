@@ -1,43 +1,107 @@
-# HN Insight Hub
+# NewsLensAI
 
-A full-stack MERN application that scrapes top stories from Hacker News and allows authenticated users to bookmark stories.
+A news intelligence platform. It ingests articles from multiple sources, enriches them with
+an AI pipeline (summarization, topic classification, embedding-based story clustering, bias
+signals), and serves a personalized, explainable feed over cached REST APIs.
 
-## Features
+The distinguishing idea is **story clustering**: rather than presenting a flat list of
+headlines, articles covering the same event are grouped, so the same story can be read
+across outlets with differing perspectives.
 
-- Hacker News scraping using Axios + Cheerio
-- JWT Authentication
-- User Registration/Login
-- Bookmark stories
-- Protected routes
-- REST APIs
-- Responsive React frontend
+> **Status:** backend and ingestion are the active focus and are working end to end.
+> The frontend is intentionally out of scope for the current phase. There is no
+> containerization, CI, or deployment configuration yet. See [`currStatus.md`](currStatus.md)
+> for an audited, area-by-area breakdown, and [`METRICS.md`](METRICS.md) for the
+> benchmarking plan.
 
-## Tech Stack
+---
 
-### Backend
-- Node.js
-- Express.js
-- MongoDB
-- JWT
-- Cheerio
+## Architecture
 
-### Frontend
-- React
-- React Router DOM
-- Axios
-- Context API
+```
+Sources (Hacker News · NewsAPI · RSS)
+        ↓
+Python ingestion — registry + orchestrator, per-source failure isolation
+        ↓
+Normalize → validate → deduplicate
+        ↓
+PostgreSQL (Prisma schema + migrations)
+        ↓
+AI enrichment
+   ├── content extraction
+   ├── summarization (OpenRouter)
+   ├── topic classification
+   ├── embeddings → story clustering
+   └── bias / tone signals
+        ↓
+Node.js API — stories, clusters, personalization
+        ↓
+Redis cache  +  Elasticsearch full-text search
+        ↓
+React frontend (out of scope this phase)
+```
 
-## Installation
+Ingestion runs as a separate Python service because scraping and AI enrichment are
+asynchronous background workloads. Keeping them off the request path means a slow
+external API or a failing scraper cannot degrade user-facing responses. BullMQ and Redis
+carry the job handoff between the two.
 
-### Backend
+## Tech stack
+
+**Backend** — Node.js, Express 5, PostgreSQL, Prisma 7, Redis (ioredis), BullMQ,
+Elasticsearch, JWT, bcrypt, Helmet, express-rate-limit, Zod. Tests run on the built-in
+`node --test` runner with supertest for route-level coverage.
+
+**Ingestion** — Python 3.9+, BeautifulSoup, requests, feed parsing, sentence-transformers
+for embeddings, OpenAI-compatible client against OpenRouter, psycopg2. Tests run on pytest.
+
+**Frontend** — React, React Router, Axios, Context API, Vite.
+
+## Repository layout
+
+```
+backend/           Express API, services, recommendation engine, Prisma schema, workers
+  recommendation/  ranking engine (signals, affinity, penalties, scoring, diversification)
+  tests/           186 unit + route tests
+ingestion/         Python ingestion + AI pipeline
+  config/sources/  source registry and per-source adapters
+  tests/           automated pytest suite
+  scripts/         manual verification scripts (see note below)
+frontend/          React client
+currStatus.md      audited status by area
+METRICS.md         benchmarking plan
+```
+
+## Getting started
+
+### Prerequisites
+
+PostgreSQL, Redis, and Elasticsearch running locally; Node.js 18+; Python 3.9+.
+
+### 1. Backend
 
 ```bash
 cd backend
 npm install
+cp .env.example .env      # then fill in the values below
+npx prisma migrate deploy
+npx prisma generate
 npm run dev
 ```
 
-### Frontend
+### 2. Ingestion
+
+```bash
+cd ingestion
+python3 -m venv venv
+./venv/bin/pip install -r requirements.txt
+./venv/bin/python run_pipeline.py
+```
+
+The ingestion service reads its configuration from `backend/.env`, so there is a single
+env file for the whole system.
+
+### 3. Frontend
 
 ```bash
 cd frontend
@@ -45,202 +109,183 @@ npm install
 npm run dev
 ```
 
-## Environment Variables
+## Environment variables
 
-### Backend
+Backend, in `backend/.env`:
 
 ```env
+NODE_ENV=development
 PORT=5001
-MONGO_URI=your_mongodb_uri
-JWT_SECRET=your_secret
+
+DATABASE_URL=postgresql://user:password@localhost:5432/newslens
+
+# Required at boot. Must be at least 32 characters.
+JWT_SECRET=
+JWT_ISSUER=newslens-api
+JWT_AUDIENCE=newslens-web
+JWT_EXPIRES_IN=7d
+BCRYPT_ROUNDS=12
+
+# Required at boot. Must be a redis:// or rediss:// URL.
+REDIS_URL=redis://localhost:6379
+
+ELASTICSEARCH_URL=http://localhost:9200
+CLIENT_URL=http://localhost:5173
+
+# Used by the ingestion service
+NEWS_API_KEY=
+OPENROUTER_API_KEY=
+
+# Interpreter the backend uses to invoke the Python pipeline
+PYTHON_BIN=
 ```
 
-### Frontend
+`config/env.js` validates `JWT_SECRET`, `REDIS_URL`, and `BCRYPT_ROUNDS` at startup and
+refuses to boot on bad values, so misconfiguration fails immediately rather than at first
+request. `NEWS_API_KEY` is validated lazily, which means a Hacker-News-only or
+summarization-only run works without a NewsAPI key.
+
+Frontend, in `frontend/.env`:
 
 ```env
 VITE_API_URL=http://localhost:5001/api
 ```
 
-## Deployment
+## API
 
-- Frontend deployed on Vercel
-- Backend deployed on Render
+All application routes are under `/api` and behind a global rate limiter. Everything
+except registration, login, `GET /api/topics`, and `/health` requires a JWT.
+
+**Auth**
+
+```
+POST   /api/auth/register
+POST   /api/auth/login
+```
+
+**Stories, search, bookmarks**
+
+```
+GET    /api/stories
+GET    /api/stories/:id
+GET    /api/stories/search
+POST   /api/stories/:id/bookmark
+GET    /api/bookmarks
+POST   /api/admin/ingestion/run        # admin only
+```
+
+**Story clusters** — the multi-source view
+
+```
+GET    /api/clusters
+GET    /api/clusters/:id
+GET    /api/stories/:id/related
+```
+
+**Personalization**
+
+```
+GET    /api/feed/personalized          # modes: personalized | latest | trending
+GET    /api/me/preferences
+PUT    /api/me/preferences
+POST   /api/stories/:id/reading
+
+GET    /api/topics                     # public
+POST   /api/topics/:topicId/follow
+DELETE /api/topics/:topicId/follow
+
+POST   /api/stories/:id/feedback       # LIKE | DISLIKE
+GET    /api/stories/:id/feedback
+DELETE /api/stories/:id/feedback
+
+POST   /api/stories/:id/skip
+GET    /api/stories/:id/skip
+DELETE /api/stories/:id/skip
+
+GET    /api/me/source-preferences
+POST   /api/sources/:sourceId/follow
+DELETE /api/sources/:sourceId/follow
+```
+
+**Health**
+
+```
+GET    /health
+```
+
+## Recommendation engine
+
+`backend/recommendation/` ranks the personalized feed. It is not a popularity sort — it
+builds a user profile from behaviour and combines weighted signals:
+
+| Module | Responsibility |
+|--------|----------------|
+| `signals.js` | User profile from reads, feedback, skips, bookmarks; classifies reads (completed / long / short / bounce) with time decay |
+| `affinity.js` | Topic and source affinity — explicit preferences blended with behavioural signal |
+| `quality.js` | Source-level quality contribution |
+| `penalties.js` | Already-read suppression that recovers as the read ages; dislike and skip demotion |
+| `normalize.js` | Freshness and popularity normalization, with unknown-popularity fallback |
+| `score.js` | Weighted combination, cold-start blending by signal strength, deterministic tie-breaking |
+| `diversify.js` | Cluster capping so one story cluster cannot dominate the feed |
+| `weights.js` | Central tunable weights |
+
+Every ranked item carries an explainability breakdown — topic affinity, source affinity,
+popularity, and the applied penalty multiplier — rather than an opaque score. Cold start is
+handled by blending toward popularity when behavioural signal is weak.
+
+Feed modes: `personalized` runs the engine, `trending` applies popularity × recency with
+round-robin cluster diversification, `latest` orders by publication time.
+
+## Testing
+
+```bash
+cd backend    && npm test                        # 186 tests
+cd ingestion  && ./venv/bin/python -m pytest     # 6 tests
+```
+
+Both suites pass. Two caveats worth knowing:
+
+- Backend tests run against a **mocked Prisma client**. They verify ranking logic, route
+  wiring, and validation — not live PostgreSQL, Redis, or Elasticsearch behaviour.
+  DB-backed integration tests are the next testing milestone.
+- `ingestion/scripts/` contains files named `test_*.py` that are **manual verification
+  scripts, not automated tests** — several make live API calls or connect to a real
+  database at import time. `pytest.ini` scopes collection to `tests/` so they are never
+  picked up. Run one deliberately with, for example,
+  `./venv/bin/python -m scripts.test_newsapi`.
+
+## Adding a news source
+
+Sources are adapters registered in `ingestion/config/sources/registry.py`. Each one
+provides a scraper callable and a normalizer that converts the raw response into the common
+article schema, so the orchestrator and everything downstream stay source-agnostic. The
+registry validates required fields and rejects duplicate slugs at import time, and
+`enabled` gates whether a source actually runs.
+
+The orchestrator wraps each source execution independently: a timeout or parse error in one
+source is recorded and the run continues with the rest.
+
+Current coverage is 3 adapters — Hacker News, NewsAPI, and RSS. RSS is the multiplier for
+reaching broad source coverage, since adding feeds is configuration rather than new code.
+
+## Known gaps
+
+Honest accounting of what is not done, in rough priority order:
+
+- **Source bias data is unpopulated.** The schema has `SourcePoliticalLean` and
+  `reliabilityScore`, and the cluster API exposes them, but no AllSides / Ad Fontes ratings
+  have been ingested. This is the highest-value remaining work — it unlocks the product's
+  core differentiator and the plumbing already exists.
+- **No integration tests or CI.** No `.github/` workflows, no coverage reporting.
+- **No Docker or deployment configuration.** The earlier Vercel/Render setup described in
+  previous versions of this README no longer reflects the repo.
+- **AI pipeline has no durable per-stage state** or stage-level dead-letter policy.
+- **Source coverage is 3 adapters**, against a target of many more.
+- **Offset-based pagination** throughout, and feed ordering by `points` has no matching
+  composite index.
+- **Observability is console logging only** — no structured logs, metrics backend, tracing,
+  or alerting.
 
 ## Author
 
 Anadil
-
-
-
-
-Metrics we can add to NewslensAI
-I would target these:
-Area	Metric we can measure
-Ingestion	Stories processed per run
-Processing	Pipeline completion time
-Extraction	Successful extraction rate
-AI	Summaries generated / success rate
-AI	Average summarization latency
-Queue	Jobs processed / failed
-Elasticsearch	Search response latency
-API	Average API response time
-Database	Stories persisted per run
-Deduplication	Duplicate stories prevented
-Reliability	Retry/success rate
-Performance	Concurrent jobs supported
-Caching	Cache hit rate
-
-
-For example, after measuring your current system, your resume could eventually say something like:
-Built an AI-powered news intelligence platform processing 100+ stories per ingestion cycle through a BullMQ-based asynchronous pipeline, achieving 95%+ processing reliability with automated retries.
-
-Or:
-Implemented Elasticsearch-powered story search with sub-200ms query latency across 10K+ indexed stories.
-
-But we shouldn't claim those numbers yet.
-What I want to do with the project
-Instead of manually guessing metrics, let's add a small metrics/observability layer to NewslensAI.
-Your pipeline could output something like:
-==============================
-NewslensAI Pipeline Metrics
-==============================
-
-Stories fetched:       10
-Extraction success:    7/10 (70%)
-Summaries generated:   10/10 (100%)
-Topics classified:     10/10 (100%)
-Bias analyzed:         7/10 (70%)
-
-Pipeline duration:     42.8s
-
-Average extraction:    1.8s
-Average AI summary:    3.2s
-Average classification:0.9s
-
-Queue retries:         1
-Failed jobs:            0
-Then we run the system with larger batches:
-25 stories
-50 stories
-100 stories
-and measure it.
-That gives you real engineering metrics, rather than resume decoration.
-Metrics I'd specifically build for your resume
-1. Pipeline throughput
-Measure:
-stories / minute
-Example:
-50 stories / 2.5 minutes
-= 20 stories/min
-Resume:
-Built an asynchronous Python ingestion pipeline processing 50+ news stories per run using BullMQ and Redis-backed job orchestration.
-
-2. Processing reliability
-Your BullMQ configuration already has:
-attempts: 3
-and:
-backoff: {
-    type: "exponential",
-    delay: 5000
-}
-That's useful.
-We can measure:
-successful jobs
-failed jobs
-retried jobs
-Then potentially say:
-Implemented BullMQ-based asynchronous processing with 3-attempt exponential backoff, improving ingestion reliability and preventing API requests from blocking during AI processing.
-
-That's a stronger resume statement than simply saying "used BullMQ."
-3. Search performance
-You already have:
-Elasticsearch
-So we'll benchmark:
-10,000 stories
-50,000 stories
-100,000 stories
-and measure:
-average search latency
-p95 latency
-For example, if your actual benchmark gives:
-Average: 82ms
-P95: 145ms
-then we can write:
-Implemented Elasticsearch-powered full-text search across 50K+ stories with ~82ms average query latency.
-
-That's a very good resume metric.
-4. AI pipeline
-You have:
-Summarization
-Topic Classification
-Bias Detection
-We can measure:
-stories analyzed
-AI success rate
-average processing time
-fallback rate
-For example, if we actually measure:
-100 stories
-96 successful
-4 fallback
-
-96% success rate
-Then:
-Built an AI enrichment pipeline generating summaries, topic classifications and bias analysis for 100+ articles with 96% successful processing.
-
-5. Content extraction
-Your current run already gives us:
-10 stories
-7 successful
-3 failed
-So currently:
-7 / 10 = 70%
-But that's actually useful because it shows us something we need to improve.
-We should fix the Hacker News URLs and then benchmark again.
-Goal:
-Before:
-70%
-
-After:
-95%+
-Then we have a real before/after metric.
-For example:
-Improved article extraction success rate from 70% to 95%+ by normalizing Hacker News URLs and adding extraction fallbacks.
-
-That is much more powerful.
-6. Database scale
-Don't just say:
-Used PostgreSQL.
-
-Instead, eventually have something like:
-Stories:       25,000
-Summaries:     24,800
-Topics:        40,000+
-Bias analyses: 20,000+
-Then your resume can demonstrate that you actually tested the application at meaningful scale.
-7. API performance
-We can benchmark your Node APIs:
-GET /api/stories
-GET /api/stories/:id
-GET /api/stories/search
-using something like:
-autocannon
-and record:
-requests/sec
-average latency
-p95 latency
-Example:
-GET /api/stories
-
-Requests/sec: 850
-Average latency: 12ms
-P95: 24ms
-Then you have another genuine metric.
-The final resume project could look like this
-After we actually measure everything, something along these lines:
-NewslensAI — AI-Powered News Intelligence Platform
-- Built a full-stack news intelligence platform using React, Node.js, PostgreSQL, Redis, Elasticsearch and Python, processing X+ articles per ingestion cycle through an asynchronous BullMQ pipeline.
-- Engineered an AI enrichment pipeline for summarization, topic classification, story clustering and bias detection, achieving X% processing success rate across X+ articles.
-- Implemented Elasticsearch-powered full-text search over X+ indexed stories, achieving Xms average / Xms P95 search latency.
-- Designed Redis + BullMQ job processing with 3-attempt exponential retries, reducing request blocking and improving ingestion reliability to X% successful jobs.
-Those are ATS-friendly, technical, and measurable.
