@@ -60,3 +60,22 @@ input {
 ::selection {
   background: rgba(217, 119, 6, 0.18);
 }
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: transparent;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
+}
+
+#root {
+  min-height: 100vh;
+}
