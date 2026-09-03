@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import API from "../api/axios";
+import { getApiErrorMessage } from "../api/apiError";
 import { useToast } from "../context/useToast";
 
 const Register = () => {
@@ -39,13 +40,9 @@ const Register = () => {
 
       navigate("/login");
     } catch (error) {
-      const message =
-        error.response?.data?.message ||
-        (error.request
-          ? "Cannot reach the backend server. Make sure the backend is running on port 5000."
-          : "Registration failed. Please try again.");
-
-      setErrorMessage(message);
+      setErrorMessage(
+        getApiErrorMessage(error, "Registration failed. Please try again.")
+      );
     } finally {
       setIsSubmitting(false);
     }

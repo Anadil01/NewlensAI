@@ -7,14 +7,86 @@ const {
   deleteCache
 } = require("../utils/cache");
 
+// Shared shape for list endpoints: enough to render a card without the
+// client having to guess the source by parsing `canonicalUrl`.
+const storyListInclude = {
+  source: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      websiteUrl: true,
+      politicalLean: true,
+      reliabilityScore: true
+    }
+  },
+
+  aiSummaries: {
+    orderBy: {
+      createdAt: "desc"
+    },
+    take: 1,
+    select: {
+      summary: true,
+      model: true,
+      version: true,
+      createdAt: true
+    }
+  },
+
+  storyTopics: {
+    include: {
+      topic: {
+        select: {
+          id: true,
+          name: true,
+          slug: true
+        }
+      }
+    }
+  }
+};
+
+// Detail view additionally needs bias analysis and summary entities.
+const storyDetailInclude = {
+  ...storyListInclude,
+
+  aiSummaries: {
+    orderBy: {
+      createdAt: "desc"
+    },
+    take: 1,
+    select: {
+      summary: true,
+      entities: true,
+      model: true,
+      version: true,
+      createdAt: true
+    }
+  },
+
+  biasAnalysis: {
+    select: {
+      biasScore: true,
+      tone: true,
+      confidence: true,
+      signals: true
+    }
+  }
+};
+
 const buildStoriesCacheKey = ({
   page,
   limit,
   search,
   cursor
 }) => {
-  return `stories:page:${page}:limit:${limit}:search:${search}:cursor:${cursor || "first"}`;
+  // `v2` marks the payload shape that carries source/summary/topic relations.
+  // Bumping it prevents the 60s-old cached entries from the previous shape
+  // being served to a client that now expects those fields.
+  return `stories:v2:page:${page}:limit:${limit}:search:${search}:cursor:${cursor || "first"}`;
 };
+
 
 const encodeCursor = (story) => Buffer.from(JSON.stringify({
   points: story.points,
@@ -94,6 +166,7 @@ const getStories = async ({
 
   const stories = await prisma.story.findMany({
     where,
+    include: storyListInclude,
     orderBy: [
       {
         points: {
@@ -141,7 +214,8 @@ const getSingleStory = async (id) => {
   const story = await prisma.story.findUnique({
     where: {
       id
-    }
+    },
+    include: storyDetailInclude
   });
 
   if (!story) {

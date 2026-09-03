@@ -26,10 +26,20 @@ app.use("/api", apiLimiter);
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api", require("./routes/storyRoutes"));
 
+// The topic and source catalogues are public: the Topics and Sources
+// pages render them for signed-out visitors, and only the follow
+// state behind them needs a session. They are mounted here because
+// personalizationRoutes applies `protect` to its whole router.
 app.get(
   "/api/topics",
   require("./controllers/personalizationController").getTopics
 );
+
+app.get(
+  "/api/sources",
+  require("./controllers/personalizationController").getSources
+);
+
 
 app.use(
   "/api",

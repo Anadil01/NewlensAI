@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import API from "../api/axios";
+import { getApiErrorMessage } from "../api/apiError";
 import { useAuth } from "../context/useAuth";
 import { useToast } from "../context/useToast";
 
@@ -42,13 +43,9 @@ const Login = () => {
 
       navigate("/");
     } catch (error) {
-      const message =
-        error.response?.data?.message ||
-        (error.request
-          ? "Cannot reach the backend server. Make sure the backend is running on port 5000."
-          : "Login failed. Please try again.");
-
-      setErrorMessage(message);
+      setErrorMessage(
+        getApiErrorMessage(error, "Login failed. Please try again.")
+      );
     } finally {
       setIsSubmitting(false);
     }

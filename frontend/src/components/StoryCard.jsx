@@ -1,17 +1,41 @@
+import { Link } from "react-router-dom";
+
 import { useAuth } from "../context/useAuth";
 import { useBookmarks } from "../hooks/useBookmarks";
 import { useToggleBookmark } from "../hooks/useToggleBookmark";
 
-const readHost = (url) => {
-  if (!url) {
+// The list endpoints now include `source`, so prefer the real publisher name
+// and only fall back to the URL host for records ingested without a source.
+const readSourceLabel = (story) => {
+  if (story.source?.name) {
+    return story.source.name;
+  }
+
+  if (!story.canonicalUrl) {
     return "Unknown source";
   }
 
   try {
-    return new URL(url).hostname.replace("www.", "");
+    return new URL(story.canonicalUrl).hostname.replace("www.", "");
   } catch {
     return "Unknown source";
   }
+};
+
+const readPrimaryTopic = (story) => {
+  if (Array.isArray(story.storyTopics) && story.storyTopics.length) {
+    return story.storyTopics[0]?.topic?.name || null;
+  }
+
+  return null;
+};
+
+const readSummary = (story) => {
+  if (Array.isArray(story.aiSummaries) && story.aiSummaries.length) {
+    return story.aiSummaries[0]?.summary || null;
+  }
+
+  return null;
 };
 
 const formatPublishedAt = (publishedAt) => {
@@ -63,8 +87,10 @@ const StoryCard = ({ story }) => {
   const { data: bookmarkedStories = [] } = useBookmarks();
   const toggleBookmark = useToggleBookmark();
 
-  const host = readHost(story.canonicalUrl);
+  const sourceLabel = readSourceLabel(story);
   const publishedLabel = formatPublishedAt(story.publishedAt);
+  const primaryTopic = readPrimaryTopic(story);
+  const summary = readSummary(story);
   const isBookmarked = bookmarkedStories.some(
     (bookmarkedStory) => bookmarkedStory.id === story.id
   );
@@ -73,7 +99,7 @@ const StoryCard = ({ story }) => {
     <article className="group flex h-full flex-col rounded-[28px] border border-stroke bg-card p-6 shadow-[0_24px_80px_rgba(15,23,42,0.06)] backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:shadow-[0_30px_90px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-slate-900/80">
       <div className="mb-5 flex items-center justify-between gap-4">
         <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-signal-deep dark:bg-amber-500/15 dark:text-amber-200">
-          {host}
+          {sourceLabel}
         </span>
         <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
           {publishedLabel}
@@ -81,10 +107,26 @@ const StoryCard = ({ story }) => {
       </div>
 
       <h3 className="text-xl font-extrabold leading-tight tracking-tight text-slate-950 transition group-hover:text-signal-deep dark:text-white">
-        {story.title}
+        <Link
+          to={`/story/${story.id}`}
+          className="rounded outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+        >
+          {story.title}
+        </Link>
       </h3>
 
+      {summary && (
+        <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
+          {summary}
+        </p>
+      )}
+
       <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-600 dark:text-slate-300">
+        {primaryTopic && (
+          <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-teal-700 dark:bg-teal-500/10 dark:text-teal-300">
+            {primaryTopic}
+          </span>
+        )}
         <span className="rounded-full bg-white px-3 py-1 ring-1 ring-stroke dark:bg-slate-950 dark:ring-white/10">
           Author: {story.author || "Unknown"}
         </span>
@@ -95,14 +137,23 @@ const StoryCard = ({ story }) => {
 
       <div className="mt-6 flex flex-1 items-end">
         <div className="flex w-full flex-col gap-3 sm:flex-row">
-          <a
-            href={story.canonicalUrl}
-            target="_blank"
-            rel="noreferrer"
+          <Link
+            to={`/story/${story.id}`}
             className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
           >
-            Read story
-          </a>
+            Open analysis
+          </Link>
+
+          {story.canonicalUrl && (
+            <a
+              href={story.canonicalUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center rounded-full border border-stroke bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-amber-300 hover:bg-amber-50 hover:text-signal-deep dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+            >
+              Read original
+            </a>
+          )}
 
           {user && (
             <button

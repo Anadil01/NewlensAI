@@ -980,9 +980,41 @@ const unfollowTopic = async ({
 // SOURCE PREFERENCES
 // ============================================================
 
+// The Sources page needs the catalogue itself, not just the rows a
+// user has an opinion about, so this is exposed separately from
+// getSourcePreferences and stays public.
+const getSources = async () => {
+  return prisma.sources.findMany({
+    where: {
+      isActive: true
+    },
+
+    orderBy: {
+      name: "asc"
+    },
+
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      websiteUrl: true,
+      type: true,
+      politicalLean: true,
+      reliabilityScore: true,
+
+      _count: {
+        select: {
+          stories: true
+        }
+      }
+    }
+  });
+};
+
 const getSourcePreferences = async (
   userId
 ) => {
+
   return prisma.userSourcePreference.findMany({
     where: {
       userId
@@ -1650,9 +1682,11 @@ module.exports = {
 
   unfollowTopic,
 
+  getSources,
   getSourcePreferences,
   followSource,
   unfollowSource,
+
 
   setStoryFeedback,
   getStoryFeedback,

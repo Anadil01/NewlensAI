@@ -116,7 +116,18 @@ exports.removeStoryFeedback = asyncHandler(async (req, res) => {
 });
 
 
+exports.getSources = asyncHandler(async (req, res) => {
+  const sources = await personalizationService.getSources();
+
+  return ApiResponse.success(
+    res,
+    { sources },
+    "Sources fetched successfully"
+  );
+});
+
 exports.getSourcePreferences = asyncHandler(async (req, res) => {
+
   const preferences =
     await personalizationService.getSourcePreferences(req.user);
 

@@ -26,11 +26,12 @@ export const useStories = ({
   search
 }) => {
   return useQuery({
-    queryKey: queryKeys.stories({
+    queryKey: queryKeys.stories.list({
       page,
       limit,
       search
     }),
+
     queryFn: () => fetchStories({
       page,
       limit,

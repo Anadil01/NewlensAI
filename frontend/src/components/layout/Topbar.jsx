@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { useTheme } from "../../context/useTheme";
 
@@ -9,24 +9,12 @@ const Topbar = () => {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-30 border-b border-stroke bg-[#fbfaf6]/80 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/80">
-      <div className="mx-auto flex h-16 w-full items-center gap-4 px-4 sm:px-6 lg:px-8">
-        {/* Mobile brand */}
-        <Link
-          to="/"
-          className="flex items-center gap-2 lg:hidden"
-        >
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-linear-to-br from-amber-500 via-orange-500 to-teal-700 text-sm font-black text-white shadow-md">
-            NL
-          </div>
-
-          <span className="text-sm font-extrabold tracking-tight text-slate-950 dark:text-white">
-            NewsLens AI
-          </span>
-        </Link>
+    <header className="sticky top-0 z-40 border-b border-stroke bg-[#fbfaf6]/90 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/90">
+      <div className="flex h-16 w-full items-center gap-4 px-4 sm:px-6 lg:px-8">
 
         {/* Search */}
-        <div className="hidden flex-1 sm:block lg:max-w-2xl">
+
+        <div className="flex-1 sm:max-w-xl lg:max-w-2xl">
           <button
             type="button"
             onClick={() => navigate("/")}
@@ -46,20 +34,27 @@ const Topbar = () => {
           </button>
         </div>
 
+        {/* Right controls */}
+
         <div className="ml-auto flex items-center gap-2">
+
           {/* Theme */}
+
           <button
             type="button"
             onClick={toggleTheme}
             className="rounded-full border border-stroke bg-white/70 px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-amber-300 hover:bg-amber-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             aria-label="Toggle color theme"
           >
-            {theme === "dark" ? "☀ Light" : "☾ Dark"}
+            {theme === "dark"
+              ? "☀ Light"
+              : "☾ Dark"}
           </button>
 
           {user ? (
             <>
               {/* User */}
+
               <div className="hidden rounded-full border border-stroke bg-white/70 px-3 py-2 text-xs text-slate-600 sm:block dark:border-white/10 dark:bg-slate-900 dark:text-slate-300">
                 <span className="font-semibold text-slate-900 dark:text-white">
                   {user.name}
@@ -67,6 +62,7 @@ const Topbar = () => {
               </div>
 
               {/* Logout */}
+
               <button
                 type="button"
                 onClick={logout}
@@ -77,19 +73,21 @@ const Topbar = () => {
             </>
           ) : (
             <>
-              <Link
-                to="/login"
+              <button
+                type="button"
+                onClick={() => navigate("/login")}
                 className="hidden rounded-full px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-white hover:text-slate-950 sm:block dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white"
               >
                 Login
-              </Link>
+              </button>
 
-              <Link
-                to="/register"
+              <button
+                type="button"
+                onClick={() => navigate("/register")}
                 className="rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
               >
                 Register
-              </Link>
+              </button>
             </>
           )}
         </div>
