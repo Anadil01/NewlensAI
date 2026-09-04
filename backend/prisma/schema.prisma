@@ -25,29 +25,38 @@ model User {
 }
 
 model Story {
-  id             String           @id @default(uuid()) @db.Uuid
-  sourceId       String           @map("source_id") @db.Uuid
-  externalId     String           @map("external_id")
-  canonicalUrl   String           @map("canonical_url")
+  id             String @id @default(uuid()) @db.Uuid
+  sourceId       String @map("source_id") @db.Uuid
+  externalId     String @map("external_id")
+  canonicalUrl   String @map("canonical_url")
+
   title          String
   author         String?
   content        String?
   excerpt        String?
-  contentStatus  ContentStatus    @default(EXTERNAL_ONLY) @map("content_status")
-  publishedAt    DateTime?        @map("published_at")
-  createdAt      DateTime         @default(now()) @map("created_at")
-  updatedAt      DateTime         @updatedAt @map("updated_at")
-  clusterId      String?          @map("cluster_id") @db.Uuid
+
+  imageUrl       String? @map("image_url")
+
+  contentStatus  ContentStatus @default(EXTERNAL_ONLY) @map("content_status")
+  publishedAt    DateTime? @map("published_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  clusterId      String? @map("cluster_id") @db.Uuid
+
   points         Int?
+
   aiSummaries    AISummary[]
   biasAnalysis   BiasAnalysis?
   bookmarks      Bookmark[]
   readingHistory ReadingHistory[]
+
   feedback       StoryFeedback[]
-  cluster        StoryCluster?    @relation(fields: [clusterId], references: [id])
-  source         sources          @relation(fields: [sourceId], references: [id])
+  cluster        StoryCluster? @relation(fields: [clusterId], references: [id])
+  source         sources @relation(fields: [sourceId], references: [id])
+
   storyTopics    StoryTopic[]
-  storySkips StorySkip[]
+  storySkips     StorySkip[]
 
   @@unique([sourceId, externalId])
   @@index([sourceId, publishedAt(sort: Desc)])

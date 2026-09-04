@@ -1,178 +1,638 @@
 import { Link } from "react-router-dom";
+import {
+  Bookmark,
+  Clock3,
+  ExternalLink,
+  Globe2,
+  Sparkles,
+} from "lucide-react";
 
-import { useAuth } from "../context/useAuth";
-import { useBookmarks } from "../hooks/useBookmarks";
-import { useToggleBookmark } from "../hooks/useToggleBookmark";
+function formatRelativeTime(date) {
+  if (!date) return "";
 
-// The list endpoints now include `source`, so prefer the real publisher name
-// and only fall back to the URL host for records ingested without a source.
-const readSourceLabel = (story) => {
-  if (story.source?.name) {
-    return story.source.name;
-  }
+  const value = new Date(date);
 
-  if (!story.canonicalUrl) {
-    return "Unknown source";
-  }
+  if (Number.isNaN(value.getTime())) return "";
 
-  try {
-    return new URL(story.canonicalUrl).hostname.replace("www.", "");
-  } catch {
-    return "Unknown source";
-  }
-};
+  const diff = Date.now() - value.getTime();
 
-const readPrimaryTopic = (story) => {
-  if (Array.isArray(story.storyTopics) && story.storyTopics.length) {
-    return story.storyTopics[0]?.topic?.name || null;
-  }
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
 
-  return null;
-};
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
 
-const readSummary = (story) => {
-  if (Array.isArray(story.aiSummaries) && story.aiSummaries.length) {
-    return story.aiSummaries[0]?.summary || null;
-  }
-
-  return null;
-};
-
-const formatPublishedAt = (publishedAt) => {
-  if (!publishedAt) {
-    return "Fresh";
-  }
-
-  const publishedDate = new Date(publishedAt);
-
-  if (Number.isNaN(publishedDate.getTime())) {
-    return "Fresh";
-  }
-
-  const elapsedMinutes = Math.round(
-    (Date.now() - publishedDate.getTime()) / 60000
-  );
-
-  if (elapsedMinutes < 1) {
-    return "Just now";
-  }
-
-  if (elapsedMinutes < 60) {
-    return `${elapsedMinutes}m ago`;
-  }
-
-  const elapsedHours = Math.round(elapsedMinutes / 60);
-
-  if (elapsedHours < 24) {
-    return `${elapsedHours}h ago`;
-  }
-
-  const elapsedDays = Math.round(elapsedHours / 24);
-
-  if (elapsedDays < 7) {
-    return `${elapsedDays}d ago`;
-  }
-
-  return publishedDate.toLocaleDateString(undefined, {
+  return value.toLocaleDateString(undefined, {
     month: "short",
-    day: "numeric"
+    day: "numeric",
+    year: value.getFullYear() !== new Date().getFullYear()
+      ? "numeric"
+      : undefined,
   });
-};
+}
 
-const StoryCard = ({ story }) => {
-  const { user } = useAuth();
+function estimateReadingTime(text) {
+  if (!text) return null;
 
-  // Both hooks share one cache entry, so rendering a grid of cards
-  // still results in a single /bookmarks request.
-  const { data: bookmarkedStories = [] } = useBookmarks();
-  const toggleBookmark = useToggleBookmark();
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
 
-  const sourceLabel = readSourceLabel(story);
-  const publishedLabel = formatPublishedAt(story.publishedAt);
-  const primaryTopic = readPrimaryTopic(story);
-  const summary = readSummary(story);
-  const isBookmarked = bookmarkedStories.some(
-    (bookmarkedStory) => bookmarkedStory.id === story.id
+  if (!words) return null;
+
+  return Math.max(1, Math.ceil(words / 220));
+}
+
+function getTopicName(story) {
+  return (
+    story?.topic?.name ||
+    story?.topicName ||
+    story?.storyTopics?.[0]?.topic?.name ||
+    "News"
   );
+}
+
+function getSourceName(story) {
+  return (
+    story?.source?.name ||
+    story?.sourceName ||
+    "Unknown source"
+  );
+}
+
+function getDescription(story) {
+  return (
+    story?.aiSummaries?.[0]?.summary ||
+    story?.aiSummary?.summary ||
+    story?.excerpt ||
+    story?.summary ||
+    story?.description ||
+    "Open this story to understand what happened."
+  );
+}
+
+function getSourceCount(story) {
+  if (Array.isArray(story?.cluster?.stories)) {
+    return story.cluster.stories.length;
+  }
+
+  if (Array.isArray(story?.cluster?.sources)) {
+    return story.cluster.sources.length;
+  }
+
+  if (typeof story?.sourceCount === "number") {
+    return story.sourceCount;
+  }
+
+  return null;
+}
+
+function getImageUrl(story) {
+  return (
+    story?.imageUrl ||
+    story?.image ||
+    story?.thumbnail ||
+    story?.thumbnailUrl ||
+    story?.image_url ||
+    null
+  );
+}
+
+function getSourceInitials(source) {
+  if (!source) return "NL";
+
+  return source
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
+}
+
+export default function StoryCard({
+  story,
+  onSave,
+  isSaved = false,
+}) {
+  const topic = getTopicName(story);
+  const source = getSourceName(story);
+  const description = getDescription(story);
+
+  const imageUrl = getImageUrl(story);
+
+  const readingTime = estimateReadingTime(
+    story?.content ||
+      story?.excerpt ||
+      description
+  );
+
+  const sourceCount = getSourceCount(story);
+
+  const storyUrl = `/story/${story.id}`;
 
   return (
-    <article className="group flex h-full flex-col rounded-[28px] border border-stroke bg-card p-6 shadow-[0_24px_80px_rgba(15,23,42,0.06)] backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:shadow-[0_30px_90px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-slate-900/80">
-      <div className="mb-5 flex items-center justify-between gap-4">
-        <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-signal-deep dark:bg-amber-500/15 dark:text-amber-200">
-          {sourceLabel}
-        </span>
-        <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
-          {publishedLabel}
-        </span>
-      </div>
+    <article
+      className="
+        group
+        overflow-hidden
+        rounded-[24px]
+        border
+        border-slate-200/80
+        bg-white/90
+        shadow-[0_8px_30px_rgba(15,23,42,0.05)]
+        backdrop-blur
+        transition-all
+        duration-300
+        hover:-translate-y-1
+        hover:shadow-[0_18px_45px_rgba(15,23,42,0.10)]
+        dark:border-white/10
+        dark:bg-slate-900/85
+      "
+    >
+      {/* =====================================================
+          IMAGE
+      ====================================================== */}
 
-      <h3 className="text-xl font-extrabold leading-tight tracking-tight text-slate-950 transition group-hover:text-signal-deep dark:text-white">
-        <Link
-          to={`/story/${story.id}`}
-          className="rounded outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
-        >
-          {story.title}
-        </Link>
-      </h3>
-
-      {summary && (
-        <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
-          {summary}
-        </p>
-      )}
-
-      <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-600 dark:text-slate-300">
-        {primaryTopic && (
-          <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-teal-700 dark:bg-teal-500/10 dark:text-teal-300">
-            {primaryTopic}
-          </span>
-        )}
-        <span className="rounded-full bg-white px-3 py-1 ring-1 ring-stroke dark:bg-slate-950 dark:ring-white/10">
-          Author: {story.author || "Unknown"}
-        </span>
-        <span className="rounded-full bg-white px-3 py-1 ring-1 ring-stroke dark:bg-slate-950 dark:ring-white/10">
-          {story.points ?? 0} points
-        </span>
-      </div>
-
-      <div className="mt-6 flex flex-1 items-end">
-        <div className="flex w-full flex-col gap-3 sm:flex-row">
-          <Link
-            to={`/story/${story.id}`}
-            className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
+      <Link
+        to={storyUrl}
+        className="
+          relative
+          block
+          w-full
+          overflow-hidden
+          bg-slate-100
+          dark:bg-slate-800
+        "
+      >
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt=""
+            loading="lazy"
+            className="
+              h-60
+              w-full
+              object-cover
+              transition-transform
+              duration-500
+              group-hover:scale-[1.03]
+              sm:h-64
+            "
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+          />
+        ) : (
+          <div
+            className="
+              relative
+              flex
+              h-60
+              w-full
+              items-center
+              justify-center
+              overflow-hidden
+              bg-gradient-to-br
+              from-amber-100
+              via-stone-50
+              to-teal-100
+              sm:h-64
+              dark:from-amber-950
+              dark:via-slate-900
+              dark:to-teal-950
+            "
           >
-            Open analysis
+            {/* Decorative background */}
+
+            <div
+              className="
+                absolute
+                -left-12
+                -top-12
+                h-40
+                w-40
+                rounded-full
+                bg-amber-300/30
+                blur-3xl
+              "
+            />
+
+            <div
+              className="
+                absolute
+                -bottom-12
+                -right-12
+                h-40
+                w-40
+                rounded-full
+                bg-teal-300/30
+                blur-3xl
+              "
+            />
+
+            <div className="relative text-center">
+              <div
+                className="
+                  mx-auto
+                  flex
+                  h-16
+                  w-16
+                  items-center
+                  justify-center
+                  rounded-2xl
+                  border
+                  border-white/60
+                  bg-white/70
+                  text-lg
+                  font-black
+                  text-slate-700
+                  shadow-sm
+                  backdrop-blur
+                  dark:border-white/10
+                  dark:bg-white/10
+                  dark:text-white
+                "
+              >
+                {getSourceInitials(source)}
+              </div>
+
+              <div
+                className="
+                  mt-3
+                  flex
+                  items-center
+                  justify-center
+                  gap-1.5
+                  text-xs
+                  font-semibold
+                  text-slate-600
+                  dark:text-slate-300
+                "
+              >
+                <Sparkles size={13} />
+
+                NewsLensAI
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* =====================================================
+            TOPIC BADGE
+        ====================================================== */}
+
+        <div className="absolute left-4 top-4">
+          <span
+            className="
+              inline-flex
+              items-center
+              rounded-full
+              bg-white/90
+              px-3
+              py-1.5
+              text-[10px]
+              font-bold
+              uppercase
+              tracking-[0.14em]
+              text-slate-800
+              shadow-sm
+              backdrop-blur
+              dark:bg-slate-950/85
+              dark:text-white
+            "
+          >
+            {topic}
+          </span>
+        </div>
+
+        {/* =====================================================
+            MULTI SOURCE BADGE
+        ====================================================== */}
+
+        {sourceCount && sourceCount > 1 ? (
+          <div className="absolute bottom-4 right-4">
+            <span
+              className="
+                inline-flex
+                items-center
+                gap-1.5
+                rounded-full
+                bg-black/70
+                px-3
+                py-1.5
+                text-[10px]
+                font-bold
+                text-white
+                backdrop-blur
+              "
+            >
+              <Globe2 size={12} />
+
+              {sourceCount} sources
+            </span>
+          </div>
+        ) : null}
+      </Link>
+
+      {/* =====================================================
+          CONTENT
+      ====================================================== */}
+
+      <div className="p-4 sm:p-5">
+        {/* ===================================================
+            SOURCE + TIME
+        ==================================================== */}
+
+        <div
+          className="
+            flex
+            items-center
+            gap-2
+            text-xs
+            text-slate-500
+            dark:text-slate-400
+          "
+        >
+          <span
+            className="
+              font-semibold
+              text-slate-700
+              dark:text-slate-200
+            "
+          >
+            {source}
+          </span>
+
+          <span
+            className="
+              h-1
+              w-1
+              rounded-full
+              bg-slate-300
+              dark:bg-slate-600
+            "
+          />
+
+          <span>
+            {formatRelativeTime(story.publishedAt)}
+          </span>
+        </div>
+
+        {/* ===================================================
+            HEADLINE
+        ==================================================== */}
+
+        <Link to={storyUrl}>
+          <h2
+            className="
+              mt-2.5
+              line-clamp-2
+              text-xl
+              font-extrabold
+              leading-[1.2]
+              tracking-[-0.02em]
+              text-slate-950
+              transition-colors
+              group-hover:text-amber-700
+              dark:text-white
+              dark:group-hover:text-amber-400
+            "
+          >
+            {story.title}
+          </h2>
+        </Link>
+
+        {/* ===================================================
+            QUICK BRIEF
+        ==================================================== */}
+
+        <div
+          className="
+            mt-4
+            rounded-2xl
+            bg-slate-50
+            p-4
+            dark:bg-slate-800/70
+          "
+        >
+          <div className="mb-1.5 flex items-center gap-2">
+            <Sparkles
+              size={14}
+              className="
+                text-amber-600
+                dark:text-amber-400
+              "
+            />
+
+            <span
+              className="
+                text-[10px]
+                font-bold
+                uppercase
+                tracking-[0.14em]
+                text-slate-500
+                dark:text-slate-400
+              "
+            >
+              Quick brief
+            </span>
+          </div>
+
+          <p
+            className="
+              line-clamp-3
+              text-sm
+              leading-6
+              text-slate-600
+              dark:text-slate-300
+            "
+          >
+            {description}
+          </p>
+        </div>
+
+        {/* ===================================================
+            STORY SIGNALS
+        ==================================================== */}
+
+        <div
+          className="
+            mt-3
+            flex
+            flex-wrap
+            items-center
+            gap-2
+            text-[11px]
+            font-semibold
+            text-slate-500
+            dark:text-slate-400
+          "
+        >
+          {sourceCount && sourceCount > 1 ? (
+            <span
+              className="
+                inline-flex
+                items-center
+                gap-1.5
+                rounded-full
+                bg-teal-50
+                px-2.5
+                py-1.5
+                text-teal-700
+                dark:bg-teal-950/50
+                dark:text-teal-300
+              "
+            >
+              <Globe2 size={12} />
+
+              {sourceCount} sources
+            </span>
+          ) : null}
+
+          {readingTime ? (
+            <span
+              className="
+                inline-flex
+                items-center
+                gap-1.5
+                rounded-full
+                bg-slate-100
+                px-2.5
+                py-1.5
+                dark:bg-slate-800
+              "
+            >
+              <Clock3 size={12} />
+
+              {readingTime} min read
+            </span>
+          ) : null}
+        </div>
+
+        {/* ===================================================
+            ACTIONS
+        ==================================================== */}
+
+        <div
+          className="
+            mt-4
+            flex
+            items-center
+            gap-2
+            border-t
+            border-slate-100
+            pt-4
+            dark:border-white/10
+          "
+        >
+          {/* UNDERSTAND */}
+
+          <Link
+            to={storyUrl}
+            className="
+              inline-flex
+              items-center
+              gap-1.5
+              rounded-full
+              bg-slate-950
+              px-4
+              py-2.5
+              text-xs
+              font-bold
+              text-white
+              transition
+              hover:bg-slate-800
+              dark:bg-white
+              dark:text-slate-950
+              dark:hover:bg-slate-200
+            "
+          >
+            <Sparkles size={14} />
+
+            Understand →
           </Link>
 
-          {story.canonicalUrl && (
+          {/* ORIGINAL */}
+
+          {story.canonicalUrl ? (
             <a
               href={story.canonicalUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center justify-center rounded-full border border-stroke bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-amber-300 hover:bg-amber-50 hover:text-signal-deep dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+              className="
+                inline-flex
+                items-center
+                gap-1.5
+                rounded-full
+                border
+                border-slate-200
+                px-3.5
+                py-2.5
+                text-xs
+                font-semibold
+                text-slate-600
+                transition
+                hover:bg-slate-50
+                hover:text-slate-900
+                dark:border-white/10
+                dark:text-slate-300
+                dark:hover:bg-white/5
+                dark:hover:text-white
+              "
             >
-              Read original
-            </a>
-          )}
+              Original
 
-          {user && (
-            <button
-              type="button"
-              onClick={() => toggleBookmark.mutate(story.id)}
-              disabled={toggleBookmark.isPending}
-              className="inline-flex items-center justify-center rounded-full border border-stroke bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-amber-300 hover:bg-amber-50 hover:text-signal-deep disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-            >
-              {toggleBookmark.isPending
-                ? "Saving..."
-                : isBookmarked
-                  ? "Remove bookmark"
-                  : "Save bookmark"}
-            </button>
-          )}
+              <ExternalLink size={13} />
+            </a>
+          ) : null}
+
+          {/* SAVE */}
+
+          <button
+            type="button"
+            onClick={() => onSave?.(story)}
+            className="
+              ml-auto
+              inline-flex
+              items-center
+              justify-center
+              rounded-full
+              border
+              border-slate-200
+              p-2.5
+              text-slate-500
+              transition
+              hover:bg-slate-50
+              hover:text-slate-900
+              dark:border-white/10
+              dark:text-slate-300
+              dark:hover:bg-white/5
+              dark:hover:text-white
+            "
+            aria-label={
+              isSaved
+                ? "Remove bookmark"
+                : "Save story"
+            }
+            title={
+              isSaved
+                ? "Saved"
+                : "Save story"
+            }
+          >
+            <Bookmark
+              size={16}
+              className={
+                isSaved
+                  ? "fill-current"
+                  : ""
+              }
+            />
+          </button>
         </div>
       </div>
     </article>
   );
-};
-
-export default StoryCard;
+}
